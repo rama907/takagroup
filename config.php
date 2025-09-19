@@ -4,9 +4,9 @@ ini_set('display_startup_errors', 1);
 error_reporting(E_ALL & ~E_NOTICE);
 // Database configuration
 define('DB_HOST', 'localhost');
-define('DB_USER', 'warungom_db_absensi_omtante');
-define('DB_PASS', 'dWw5rsKaF5q47V9JZHEd');
-define('DB_NAME', 'warungom_db_absensi_omtante');
+define('DB_USER', 'imjutwnp_grand_company_db');
+define('DB_PASS', 'DeuvYrgy7GddWrr8M9JY');
+define('DB_NAME', 'imjutwnp_grand_company_db');
 
 // Create connection
 $conn = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME);
@@ -84,11 +84,11 @@ function getEmployeeNameById($id) {
 function sendDiscordNotification($data, $type = 'info') {
     // URL Webhook Discord Anda
     // Webhook pertama (untuk SEMUA notifikasi)
-    $general_webhook_url = 'https://discord.com/api/webhooks/1402014520385212577/my5MJe5VIHHA9K6RX5TAYal9vHG4VUUlKHiy4qFGHSaXhnns1ixnCXI9qxBIBa41vpbi';
+    $general_webhook_url = 'https://discord.com/api/webhooks/YOUR_SECOND_WEBHOOK_URL_HERE';
 
     // Webhook kedua (KHUSUS untuk pengajuan dan pembaruan status permohonan)
     // GANTI DENGAN URL WEBHOOK KEDUA ANDA DI SINI
-    $request_webhook_url = 'https://discord.com/api/webhooks/1402014726195511548/IO3d24hho1AyxSLnTaYpCYk9Q5j_IFpt9HLPMLzA5d4CJBeKdVPjIo0H0F65cFh_aSwV'; // <--- PASTIKAN INI DIGANTI!
+    $request_webhook_url = 'https://discord.com/api/webhooks/YOUR_SECOND_WEBHOOK_URL_HERE'; // <--- PASTIKAN INI DIGANTI!
 
     $webhooks_to_send = [$general_webhook_url]; // Default: selalu kirim ke webhook umum
 
