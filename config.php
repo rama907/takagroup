@@ -93,7 +93,7 @@ function sendDiscordNotification($data, $type = 'info') {
     $webhooks_to_send = [$general_webhook_url]; // Default: selalu kirim ke webhook umum
 
     // Jika tipe notifikasi adalah pengajuan cuti/resign, atau pembaruan status permohonan, tambahkan webhook kedua
-    if (in_array($type, ['leave_request_submitted', 'resignation_request_submitted', 'manual_duty_request_submitted', 'request_status_update', 'warning_letter_issued', 'warning_letter_deleted'])) {
+    if (in_array($type, ['leave_request_submitted', 'resignation_request_submitted', 'manual_duty_request_submitted', 'request_status_update', 'warning_letter_issued', 'warning_letter_deleted', 'new_employee_request_submitted', 'password_reset_request_submitted'])) {
         // Pastikan URL webhook kedua telah diatur dan bukan placeholder
         if (!empty($request_webhook_url) && $request_webhook_url !== 'https://discord.com/api/webhooks/YOUR_SECOND_WEBHOOK_URL_HERE') {
             $webhooks_to_send[] = $request_webhook_url;
@@ -102,8 +102,8 @@ function sendDiscordNotification($data, $type = 'info') {
         }
     }
 
-    $username = "Warung Om Tante Bot";
-    $avatar_url = ""; // GANTI DENGAN URL AVATAR BOT ANDA, misal logo warung
+    $username = "Galaxy Night Club Bot";
+    $avatar_url = ""; // GANTI DENGAN URL AVATAR BOT ANDA, misal logo club
 
     // Definisikan warna untuk setiap tipe notifikasi
     $colors = [
@@ -119,6 +119,8 @@ function sendDiscordNotification($data, $type = 'info') {
         'salary_unpaid_all' => 16750899, // Orange/Merah untuk reset semua gaji
         'warning_letter_issued' => 16750899, // Orange untuk SP
         'warning_letter_deleted' => 15158332, // Merah untuk hapus SP
+        'new_employee_request_submitted' => 3447003, // Biru untuk permintaan anggota baru
+        'password_reset_request_submitted' => 16776960, // Kuning untuk permintaan reset password
     ];
     $color = $colors[$type] ?? 0; // Ambil warna berdasarkan tipe, default hitam
 
@@ -129,7 +131,7 @@ function sendDiscordNotification($data, $type = 'info') {
         'color' => $color,
         'timestamp' => date('c'), // Waktu saat notifikasi dikirim
         'footer' => [
-            'text' => 'Warung Om Tante Management System',
+            'text' => 'Galaxy Night Club Management System',
         ],
     ];
 
@@ -419,8 +421,46 @@ function sendDiscordNotification($data, $type = 'info') {
             ];
             break;
 
+        case 'employee_password_changed': // Notifikasi baru untuk perubahan kata sandi
+            $employee_name = htmlspecialchars($data['employee_name'] ?? 'N/A');
+            $embed['title'] = "🔒 Kata Sandi Berhasil Diubah!";
+            $embed['description'] = "Anggota **{$employee_name}** telah berhasil mengubah kata sandi mereka.";
+            $embed['color'] = $colors['success'];
+            $embed['fields'] = [
+                ['name' => 'Anggota', 'value' => $employee_name, 'inline' => true]
+            ];
+            break;
+
+        case 'new_employee_request_submitted':
+            $employee_name = htmlspecialchars($data['employee_name'] ?? 'N/A');
+            $new_employee_name = htmlspecialchars($data['new_employee_name'] ?? 'N/A');
+            $requested_role = htmlspecialchars($data['requested_role'] ?? 'N/A');
+            $embed['title'] = "➕ Permintaan Anggota Baru!";
+            $embed['description'] = "Permintaan untuk menambahkan anggota baru **{$new_employee_name}** ({$requested_role}) telah diajukan oleh **{$employee_name}**.";
+            $embed['color'] = $colors['info'];
+            $embed['fields'] = [
+                ['name' => 'Diajukan Oleh', 'value' => $employee_name, 'inline' => true],
+                ['name' => 'Nama Anggota Baru', 'value' => $new_employee_name, 'inline' => true],
+                ['name' => 'Jabatan', 'value' => getRoleDisplayName($requested_role), 'inline' => true],
+            ];
+            break;
+
+        case 'password_reset_request_submitted':
+            $employee_name = htmlspecialchars($data['employee_name'] ?? 'N/A');
+            $target_employee_name = htmlspecialchars($data['target_employee_name'] ?? 'N/A');
+            $reset_type_text = ($data['reset_type'] ?? '') === 'new' ? 'Kata Sandi Baru' : 'Kata Sandi Default';
+            $embed['title'] = "🔄 Permintaan Reset Kata Sandi!";
+            $embed['description'] = "Permintaan reset kata sandi untuk **{$target_employee_name}** telah diajukan oleh **{$employee_name}**.";
+            $embed['color'] = $colors['warning'];
+            $embed['fields'] = [
+                ['name' => 'Diajukan Oleh', 'value' => $employee_name, 'inline' => true],
+                ['name' => 'Untuk Anggota', 'value' => $target_employee_name, 'inline' => true],
+                ['name' => 'Tipe Reset', 'value' => $reset_type_text, 'inline' => true],
+            ];
+            break;
+
         default:
-            // Fallback untuk pesan yang tidak dikenali atau data sederhana
+            // Fallback for unrecognized messages
             $embed['title'] = "ℹ️ Notifikasi Umum";
             $embed['description'] = htmlspecialchars(is_array($data) ? json_encode($data) : $data);
             $embed['color'] = $colors['info'];
@@ -449,6 +489,7 @@ function sendDiscordNotification($data, $type = 'info') {
         @file_get_contents($webhook_url, false, $context);
     }
 }
+
 
 // Function to get total pending requests
 function getPendingRequestCount() {
@@ -481,6 +522,34 @@ function getPendingRequestCount() {
         $count += $result['count'];
         $stmt->close();
     }
+    
+    // Count pending add_employee requests
+    $stmt = $conn->prepare("SELECT COUNT(*) as count FROM add_employee_requests WHERE status = 'pending'");
+    if ($stmt) {
+        $stmt->execute();
+        $result = $stmt->get_result()->fetch_assoc();
+        $count += $result['count'];
+        $stmt->close();
+    }
+    
+    // Count pending password reset requests
+    $stmt = $conn->prepare("SELECT COUNT(*) as count FROM password_reset_requests WHERE status = 'pending'");
+    if ($stmt) {
+        $stmt->execute();
+        $result = $stmt->get_result()->fetch_assoc();
+        $count += $result['count'];
+        $stmt->close();
+    }
+
+    // Count pending room booking requests
+    $stmt = $conn->prepare("SELECT COUNT(*) as count FROM room_bookings WHERE booking_status = 'pending_approval'");
+    if ($stmt) {
+        $stmt->execute();
+        $result = $stmt->get_result()->fetch_assoc();
+        $count += $result['count'];
+        $stmt->close();
+    }
 
     return $count;
 }
+?>

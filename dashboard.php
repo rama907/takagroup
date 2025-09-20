@@ -154,7 +154,7 @@ if ($user['is_on_duty'] && $user['current_duty_start']) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard - Warung Om Tante</title>
+    <title>Dashboard - Galaxy Night Club</title>
     <link rel="icon" href="LOGO_WOT.png" type="image/png">
     <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
     <link rel="stylesheet" href="style.css">
@@ -167,7 +167,7 @@ if ($user['is_on_duty'] && $user['current_duty_start']) {
             display: block;
             margin: auto;
         }
-        /* CSS untuk logo Warung Om Tante di header dashboard */
+        /* CSS untuk logo Galaxy Night Club di header dashboard */
         .profile-avatar {
             width: 80px;
             height: 80px;
@@ -176,7 +176,7 @@ if ($user['is_on_duty'] && $user['current_duty_start']) {
             display: flex;
             align-items: center;
             justify-content: center;
-            color: white;
+            color: #0a0a0a;
             font-size: 2rem;
             box-shadow: var(--shadow-lg);
             border: 4px solid var(--bg-card);
@@ -206,10 +206,10 @@ if ($user['is_on_duty'] && $user['current_duty_start']) {
             <div class="dashboard-header">
                 <div class="user-profile">
                     <div class="profile-avatar">
-                        <img src="LOGO_WOT.png" alt="Logo Warung Om Tante">
+                        ✨
                     </div>
                     <div class="profile-info">
-                        <h1>Sistem Manajemen Warung Om Tante</h1>
+                        <h1>Sistem Manajemen Galaxy Night Club</h1>
                         <div class="user-details">
                             <span class="user-icon">👤</span>
                             <span class="user-name"><?= htmlspecialchars($user['name']) ?></span>

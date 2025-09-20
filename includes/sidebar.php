@@ -168,6 +168,10 @@ if (isset($conn) && isLoggedIn()) {
             <span class="nav-icon">🚨</span>
             <span class="nav-text">Saran & Kritik (Anonim)</span>
         </a>
+        <a href="change-password.php" class="nav-item <?= basename($_SERVER['PHP_SELF']) == 'change-password.php' ? 'active' : '' ?>">
+            <span class="nav-icon">🔑</span>
+            <span class="nav-text">Ubah Kata Sandi</span>
+        </a>
         
         <?php if (hasRole(['direktur', 'wakil_direktur', 'manager'])): ?>
         <div class="nav-divider"></div>
@@ -194,6 +198,13 @@ if (isset($conn) && isLoggedIn()) {
         <a href="warning-management.php" class="nav-item <?= basename($_SERVER['PHP_SELF']) == 'warning-management.php' ? 'active' : '' ?>">
             <span class="nav-icon">⚠️</span>
             <span class="nav-text">Manajemen SP</span>
+        </a>
+        <a href="manage-bookings.php" class="nav-item <?= basename($_SERVER['PHP_SELF']) == 'manage-bookings.php' ? 'active' : '' ?>">
+            <span class="nav-icon">🛎️</span>
+            <span class="nav-text">Kelola Pemesanan</span>
+            <?php if (isset($pending_requests_count) && $pending_requests_count > 0): ?>
+                <span class="pending-indicator"><?= $pending_requests_count ?></span>
+            <?php endif; ?>
         </a>
         <?php endif; ?>
         
