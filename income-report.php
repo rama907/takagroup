@@ -1,7 +1,7 @@
 <?php
 require_once 'config.php';
 
-if (!isLoggedIn() || !hasRole(['direktur', 'wakil_direktur', 'manager'])) {
+if (!isLoggedIn() || !hasRole(['ceo', 'direktur', 'wakil_direktur', 'manager'])) {
     header('Location: dashboard.php');
     exit;
 }

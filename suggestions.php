@@ -40,7 +40,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
 // Fetch all suggestions if the user has permission
 $all_suggestions = [];
-if (hasRole(['direktur', 'wakil_direktur', 'manager'])) {
+if (hasRole(['ceo', 'direktur', 'wakil_direktur', 'manager'])) {
     $stmt_suggestions = $conn->query("
         SELECT id, message, submitted_at
         FROM suggestions
@@ -130,7 +130,7 @@ if (hasRole(['direktur', 'wakil_direktur', 'manager'])) {
                 </div>
             </div>
 
-            <?php if (hasRole(['direktur', 'wakil_direktur', 'manager'])): ?>
+            <?php if (hasRole(['ceo', 'direktur', 'wakil_direktur', 'manager'])): ?>
             <div class="suggestion-card" style="margin-top: var(--spacing-2xl);">
                 <div class="card-header">
                     <h3>Semua Saran & Kritik</h3>

@@ -2,7 +2,7 @@
 require_once 'config.php';
 
 // Hanya direktur, wakil_direktur, dan manager yang bisa mengakses halaman ini
-if (!isLoggedIn() || !hasRole(['direktur', 'wakil_direktur', 'manager'])) {
+if (!isLoggedIn() || !hasRole(['ceo', 'direktur', 'wakil_direktur', 'manager'])) {
     header('Location: dashboard.php');
     exit;
 }

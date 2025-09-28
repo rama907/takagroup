@@ -17,10 +17,13 @@ if (!function_exists('formatDuration')) {
 if (!function_exists('getRoleDisplayName')) {
     function getRoleDisplayName($role) {
         $roles = [
+            'ceo' => 'CEO',
             'direktur' => 'Direktur',
             'wakil_direktur' => 'Wakil Direktur',
             'manager' => 'Manager',
-            'chef' => 'Chef',
+            'barista' => 'Barista',
+            'waiters' => 'Waiters',
+            'guard' => 'Guard',
             'karyawan' => 'Karyawan',
             'magang' => 'Magang',
             // Tambahkan peran lain jika ada
@@ -29,7 +32,7 @@ if (!function_exists('getRoleDisplayName')) {
     }
 }
 
-if (!isLoggedIn() || !hasRole(['direktur', 'wakil_direktur', 'manager'])) {
+if (!isLoggedIn() || !hasRole(['ceo', 'direktur', 'wakil_direktur', 'manager'])) {
     header('Location: dashboard.php');
     exit;
 }
@@ -72,12 +75,15 @@ $stmt = $conn->query("
     WHERE e.status = 'active'
     ORDER BY
         CASE e.role
-            WHEN 'direktur' THEN 1
-            WHEN 'wakil_direktur' THEN 2
-            WHEN 'manager' THEN 3
-            WHEN 'chef' THEN 4
-            WHEN 'karyawan' THEN 5
-            WHEN 'magang' THEN 6
+            WHEN 'ceo' THEN 1
+            WHEN 'direktur' THEN 2
+            WHEN 'wakil_direktur' THEN 3
+            WHEN 'manager' THEN 4
+            WHEN 'barista' THEN 5
+            WHEN 'waiters' THEN 6
+            WHEN 'guard' THEN 7
+            WHEN 'karyawan' THEN 8
+            WHEN 'magang' THEN 9
         END,
         e.name
 ");
@@ -134,12 +140,15 @@ if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
         WHERE e.status = 'active'
         ORDER BY
             CASE e.role
-                WHEN 'direktur' THEN 1
-                WHEN 'wakil_direktur' THEN 2
-                WHEN 'manager' THEN 3
-                WHEN 'chef' THEN 4
-                WHEN 'karyawan' THEN 5
-                WHEN 'magang' THEN 6
+                WHEN 'ceo' THEN 1
+                WHEN 'direktur' THEN 2
+                WHEN 'wakil_direktur' THEN 3
+                WHEN 'manager' THEN 4
+                WHEN 'barista' THEN 5
+                WHEN 'waiters' THEN 6
+                WHEN 'guard' THEN 7
+                WHEN 'karyawan' THEN 8
+                WHEN 'magang' THEN 9
             END,
             e.name
     ");

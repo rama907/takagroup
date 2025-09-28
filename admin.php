@@ -1,7 +1,7 @@
 <?php
 require_once 'config.php';
 
-if (!isLoggedIn() || !hasRole(['direktur', 'wakil_direktur'])) {
+if (!isLoggedIn() || !hasRole(['ceo', 'direktur', 'wakil_direktur'])) {
     header('Location: dashboard.php');
     exit;
 }
@@ -219,12 +219,15 @@ $employees = $conn->query("
     WHERE status = 'active' 
     ORDER BY 
         CASE role 
-            WHEN 'direktur' THEN 1
-            WHEN 'wakil_direktur' THEN 2
-            WHEN 'manager' THEN 3
-            WHEN 'chef' THEN 4
-            WHEN 'karyawan' THEN 5
-            WHEN 'magang' THEN 6
+            WHEN 'ceo' THEN 1
+            WHEN 'direktur' THEN 2
+            WHEN 'wakil_direktur' THEN 3
+            WHEN 'manager' THEN 4
+            WHEN 'barista' THEN 5
+            WHEN 'waiters' THEN 6
+            WHEN 'guard' THEN 7
+            WHEN 'karyawan' THEN 8
+            WHEN 'magang' THEN 9
         END,
         name
 ")->fetch_all(MYSQLI_ASSOC);
@@ -321,10 +324,13 @@ $stats['pending_requests'] = $conn->query("
                                         <label for="role">Jabatan</label>
                                         <select name="role" id="role" class="form-select" required>
                                             <option value="">Pilih Jabatan</option>
+                                            <option value="ceo">CEO</option>
                                             <option value="direktur">Direktur</option>
                                             <option value="wakil_direktur">Wakil Direktur</option>
                                             <option value="manager">Manager</option>
-                                            <option value="chef">Chef</option>
+                                            <option value="barista">Barista</option>
+                                            <option value="waiters">Waiters</option>
+                                            <option value="guard">Guard</option>
                                             <option value="karyawan">Karyawan</option>
                                             <option value="magang">Magang</option>
                                         </select>
@@ -370,6 +376,9 @@ $stats['pending_requests'] = $conn->query("
                                             <div class="role-change-group">
                                                 <select name="new_role" class="form-select-small" required>
                                                     <option value="">Ubah Jabatan</option>
+                                                    <option value="ceo" <?= $employee['role'] == 'ceo' ? 'selected' : '' ?>>
+                                                        CEO <?= $employee['role'] == 'ceo' ? '(Saat ini)' : '' ?>
+                                                    </option>
                                                     <option value="direktur" <?= $employee['role'] == 'direktur' ? 'selected' : '' ?>>
                                                         Direktur <?= $employee['role'] == 'direktur' ? '(Saat ini)' : '' ?>
                                                     </option>
@@ -379,8 +388,14 @@ $stats['pending_requests'] = $conn->query("
                                                     <option value="manager" <?= $employee['role'] == 'manager' ? 'selected' : '' ?>>
                                                         Manager <?= $employee['role'] == 'manager' ? '(Saat ini)' : '' ?>
                                                     </option>
-                                                    <option value="chef" <?= $employee['role'] == 'chef' ? 'selected' : '' ?>>
-                                                        Chef <?= $employee['role'] == 'chef' ? '(Saat ini)' : '' ?>
+                                                    <option value="barista" <?= $employee['role'] == 'barista' ? 'selected' : '' ?>>
+                                                        Barista <?= $employee['role'] == 'barista' ? '(Saat ini)' : '' ?>
+                                                    </option>
+                                                    <option value="waiters" <?= $employee['role'] == 'waiters' ? 'selected' : '' ?>>
+                                                        Waiters <?= $employee['role'] == 'waiters' ? '(Saat ini)' : '' ?>
+                                                    </option>
+                                                    <option value="guard" <?= $employee['role'] == 'guard' ? 'selected' : '' ?>>
+                                                        Guard <?= $employee['role'] == 'guard' ? '(Saat ini)' : '' ?>
                                                     </option>
                                                     <option value="karyawan" <?= $employee['role'] == 'karyawan' ? 'selected' : '' ?>>
                                                         Karyawan <?= $employee['role'] == 'karyawan' ? '(Saat ini)' : '' ?>
@@ -483,10 +498,13 @@ $stats['pending_requests'] = $conn->query("
             const currentRole = currentSelectedOption ? currentSelectedOption.value : null;
             
             const roleNames = {
+                'ceo': 'CEO',
                 'direktur': 'Direktur',
                 'wakil_direktur': 'Wakil Direktur', 
                 'manager': 'Manager',
-                'chef': 'Chef',
+                'barista': 'Barista',
+                'waiters': 'Waiters',
+                'guard': 'Guard',
                 'karyawan': 'Karyawan',
                 'magang': 'Magang'
             };

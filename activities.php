@@ -24,10 +24,13 @@ if (!function_exists('formatDuration')) {
 if (!function_exists('getRoleDisplayName')) {
     function getRoleDisplayName($role) {
         $roles = [
+            'ceo' => 'CEO',
             'direktur' => 'Direktur',
             'wakil_direktur' => 'Wakil Direktur',
             'manager' => 'Manager',
-            'chef' => 'Chef',
+            'barista' => 'Barista',
+            'waiters' => 'Waiters',
+            'guard' => 'Guard',
             'karyawan' => 'Karyawan',
             'magang' => 'Magang',
             // Tambahkan peran lain jika ada

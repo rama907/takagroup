@@ -8,7 +8,7 @@ if (!isLoggedIn()) {
 
 $user = getCurrentUser();
 
-$is_admin_or_manager = hasRole(['direktur', 'wakil_direktur', 'manager']);
+$is_admin_or_manager = hasRole(['ceo', 'direktur', 'wakil_direktur', 'manager']);
 
 $employee_id_to_view = 0;
 

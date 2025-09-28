@@ -2,7 +2,7 @@
 require_once 'config.php';
 
 // Cek hak akses. Hanya direktur, wakil direktur, dan manajer yang bisa mengakses.
-if (!isLoggedIn() || !hasRole(['direktur', 'wakil_direktur', 'manager'])) {
+if (!isLoggedIn() || !hasRole(['ceo', 'direktur', 'wakil_direktur', 'manager'])) {
     header('Location: dashboard.php');
     exit;
 }

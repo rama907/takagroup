@@ -6,7 +6,7 @@ require_once 'config.php';
 // ini_set('display_startup_errors', 1);
 // error_reporting(E_ALL);
 
-if (!isLoggedIn() || !hasRole(['direktur', 'wakil_direktur'])) {
+if (!isLoggedIn() || !hasRole(['ceo', 'direktur', 'wakil_direktur'])) {
     header('Location: dashboard.php');
     exit;
 }

@@ -9,7 +9,7 @@ if (!isLoggedIn()) {
 $user = getCurrentUser();
 
 // Tentukan apakah pengguna memiliki peran admin yang diizinkan untuk menginput data orang lain
-$is_admin_or_manager = hasRole(['direktur', 'wakil_direktur', 'manager']);
+$is_admin_or_manager = hasRole(['ceo', 'direktur', 'wakil_direktur', 'manager']);
 
 // Inisialisasi ID karyawan yang akan diinput datanya. Defaultnya adalah user yang login.
 $employee_id_to_submit = $user['id'];

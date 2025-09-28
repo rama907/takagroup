@@ -1,5 +1,6 @@
 <?php
 session_start();
+require_once 'config.php';
 
 $error = null;
 
@@ -16,6 +17,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = "Password Taka Group salah!";
     }
 }
+
+// --- Logika untuk status klub ---
+// Mengambil on-duty dan total employee count
+global $conn;
+$on_duty_employees_count = $conn->query("SELECT COUNT(*) as count FROM employees WHERE is_on_duty = 1")->fetch_assoc()['count'];
+$status_is_open = $on_duty_employees_count > 0;
+// --- Akhir logika untuk status klub ---
 ?>
 
 <!DOCTYPE html>
@@ -126,6 +134,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             object-fit: contain;
             margin-bottom: 10px;
         }
+        
+        /* Gaya baru untuk panel status club */
+        .club-status-panel {
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: var(--radius-2xl);
+            padding: var(--spacing-xl);
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+            color: white;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+        }
+        .club-status-panel h4 {
+            font-size: 1.25rem;
+            font-weight: 700;
+            margin-bottom: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        .status-open {
+            color: var(--success-color);
+        }
+        .status-closed {
+            color: var(--danger-color);
+        }
+
+        /* Container baru untuk menumpuk kartu di sisi kanan */
+        .right-side-panel {
+            display: flex;
+            flex-direction: column;
+            gap: var(--spacing-xl);
+            width: 100%;
+            max-width: 400px;
+        }
+        
     </style>
 </head>
 <body class="taka-login-body">
@@ -158,15 +205,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </form>
         </div>
         
-        <div class="booking-info-card">
-            <span class="icon" style="font-size: 3rem; color: #ffc107;">🗓️</span>
-            <h3>Booking Ruangan Galaxy Night Club By Taka Group</h3>
-            <p style="color: #adb5bd;">Dapatkan pengalaman eksklusif dengan memesan ruangan-ruangan VIP kami.</p>
-            <a href="public-booking.php" class="btn btn-warning btn-booking">
-                Booking Sekarang
-            </a>
+        <div class="right-side-panel">
+            <div class="booking-info-card">
+                <span class="icon" style="font-size: 3rem; color: #ffc107;">🗓️</span>
+                <h3>Booking Ruangan Galaxy Night Club By Taka Group</h3>
+                <p style="color: #adb5bd;">Dapatkan pengalaman eksklusif dengan memesan ruangan-ruangan VIP kami.</p>
+                <a href="public-booking.php" class="btn btn-warning btn-booking">
+                    Booking Sekarang
+                </a>
+            </div>
+            
+            <div class="club-status-panel">
+                <h4>
+                    <?php if ($status_is_open): ?>
+                        <span class="status-open">🎉</span> Club Sedang Buka
+                    <?php else: ?>
+                        <span class="status-closed">🌙</span> Club Sedang Tutup
+                    <?php endif; ?>
+                </h4>
+            </div>
         </div>
-    </div>
+        </div>
     
     <script src="script.js"></script>
 </body>

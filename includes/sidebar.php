@@ -173,7 +173,7 @@ if (isset($conn) && isLoggedIn()) {
             <span class="nav-text">Ubah Kata Sandi</span>
         </a>
         
-        <?php if (hasRole(['direktur', 'wakil_direktur', 'manager'])): ?>
+        <?php if (hasRole(['ceo', 'direktur', 'wakil_direktur', 'manager'])): ?>
         <div class="nav-divider"></div>
         <a href="employees.php" class="nav-item <?= basename($_SERVER['PHP_SELF']) == 'employees.php' ? 'active' : '' ?>">
             <span class="nav-icon">👥</span>
@@ -208,7 +208,7 @@ if (isset($conn) && isLoggedIn()) {
         </a>
         <?php endif; ?>
         
-        <?php if (hasRole(['direktur', 'wakil_direktur'])): ?>
+        <?php if (hasRole(['ceo', 'direktur', 'wakil_direktur'])): ?>
         <div class="nav-divider"></div>
         <a href="requests.php" class="nav-item <?= basename($_SERVER['PHP_SELF']) == 'requests.php' ? 'active' : '' ?>">
             <span class="nav-icon">📋</span>

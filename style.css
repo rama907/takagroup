@@ -14,6 +14,8 @@
     --danger-light: rgba(220, 53, 69, 0.2);
     --info-color: #ffc107; /* Emas/Kuning */
     --info-light: rgba(255, 193, 7, 0.2);
+    --manager-color: #cd07ff; /* Ungu */
+    --manager-light: rgba(205, 7, 255, 0.2);
 
     --bg-primary: #121212; /* Hitam elegan */
     --bg-secondary: #1e1e1e; /* Abu-abu gelap */
@@ -1136,24 +1138,39 @@ body {
     letter-spacing: 0.05em;
 }
 
-.role-direktur {
-    background: var(--primary-light);
-    color: var(--primary-color);
-}
-
-.role-wakil_direktur {
-    background: var(--primary-light);
-    color: var(--primary-color);
-}
-
-.role-manager {
+.role-ceo {
     background: var(--warning-light);
     color: var(--warning-color);
 }
 
-.role-chef {
-    background: var(--info-light);
-    color: var(--info-color);
+.role-direktur {
+    background: var(--warning-light);
+    color: var(--warning-color);
+}
+
+.role-wakil_direktur {
+    background: var(--warning-light);
+    color: var(--warning-color);
+}
+
+.role-manager {
+    background: var(--manager-light);
+    color: var(--manager-color);
+}
+
+.role-barista {
+    background: var(--primary-light);
+    color: var(--primary-color);
+}
+
+.role-waiters {
+    background: var(--primary-light);
+    color: var(--primary-color);
+}
+
+.role-guard {
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
 }
 
 .role-karyawan {
@@ -1162,8 +1179,8 @@ body {
 }
 
 .role-magang {
-    background: var(--danger-light);
-    color: var(--danger-color);
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
 }
 
 /* Enhanced Activities */

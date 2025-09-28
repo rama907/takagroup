@@ -54,10 +54,13 @@ function formatDuration($minutes) {
 // Function to get role display name
 function getRoleDisplayName($role) {
     $roles = [
+        'ceo' => 'CEO',
         'direktur' => 'Direktur',
         'wakil_direktur' => 'Wakil Direktur',
         'manager' => 'Manager',
-        'chef' => 'Chef',
+        'barista' => 'Barista',
+        'waiters' => 'Waiters',
+        'guard' => 'Guard',
         'karyawan' => 'Karyawan',
         'magang' => 'Magang'
     ];
