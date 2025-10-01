@@ -95,8 +95,20 @@ function sendDiscordNotification($data, $type = 'info') {
 
     $webhooks_to_send = [$general_webhook_url]; // Default: selalu kirim ke webhook umum
 
-    // Jika tipe notifikasi adalah pengajuan cuti/resign, atau pembaruan status permohonan, tambahkan webhook kedua
-    if (in_array($type, ['leave_request_submitted', 'resignation_request_submitted', 'manual_duty_request_submitted', 'request_status_update', 'warning_letter_issued', 'warning_letter_deleted', 'new_employee_request_submitted', 'password_reset_request_submitted'])) {
+    // Perbaikan: Tambahkan semua tipe notifikasi booking ke dalam array ini
+    if (in_array($type, [
+        'leave_request_submitted', 
+        'resignation_request_submitted', 
+        'manual_duty_request_submitted', 
+        'request_status_update', 
+        'warning_letter_issued', 
+        'warning_letter_deleted', 
+        'new_employee_request_submitted', 
+        'password_reset_request_submitted',
+        'room_booking_submitted', // Ditambahkan
+        'booking_status_updated', // Ditambahkan
+        'payment_status_updated'  // Ditambahkan
+    ])) {
         // Pastikan URL webhook kedua telah diatur dan bukan placeholder
         if (!empty($request_webhook_url) && $request_webhook_url !== 'https://discord.com/api/webhooks/YOUR_SECOND_WEBHOOK_URL_HERE') {
             $webhooks_to_send[] = $request_webhook_url;
@@ -264,7 +276,7 @@ function sendDiscordNotification($data, $type = 'info') {
                 $embed['description'] = "Anggota baru **{$target_name}** ({$role_display}) telah ditambahkan oleh **{$admin_name}**.";
                 $embed['fields'] = [
                     ['name' => 'Nama Anggota', 'value' => $target_name, 'inline' => true],
-                    ['name' => 'Jabatan', 'value' => getRoleDisplayName($requested_role), 'inline' => true],
+                    ['name' => 'Jabatan', 'value' => $role_display, 'inline' => true],
                     ['name' => 'Ditambahkan Oleh', 'value' => $admin_name, 'inline' => true],
                 ];
             }
