@@ -67,7 +67,7 @@ $rooms = $conn->query("SELECT * FROM rooms ORDER BY id ASC")->fetch_all(MYSQLI_A
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Booking Ruangan - Galaxy Night Club</title>
+    <title>Booking Ruangan - Elysium Night Club</title>
     <link rel="icon" href="LOGO_WOT.png" type="image/png">
     <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
     <link rel="stylesheet" href="style.css">
@@ -138,7 +138,7 @@ $rooms = $conn->query("SELECT * FROM rooms ORDER BY id ASC")->fetch_all(MYSQLI_A
                 <div class="page-header">
                     <h1>
                         <span class="page-icon">🗓️</span>
-                        Booking Ruangan Galaxy Night Club
+                        Booking Ruangan Elysium Night Club
                     </h1>
                     <p>Lihat detail ruangan dan ajukan pemesanan. Kami akan segera menghubungi Anda untuk konfirmasi.</p>
                 </div>

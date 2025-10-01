@@ -32,7 +32,7 @@ if ($stmt_sp) {
 }
 
 // Handle duty actions
-if ($_POST['action'] ?? '' === 'on_duty') {
+if (isset($_POST['action']) && $_POST['action'] === 'on_duty') {
     if (!$user['is_on_duty']) {
         $stmt = $conn->prepare("UPDATE employees SET is_on_duty = TRUE, current_duty_start = NOW() WHERE id = ?");
         $stmt->bind_param("i", $user['id']);
@@ -48,7 +48,7 @@ if ($_POST['action'] ?? '' === 'on_duty') {
     }
 }
 
-if ($_POST['action'] ?? '' === 'off_duty') {
+if (isset($_POST['action']) && $_POST['action'] === 'off_duty') {
     if ($user['is_on_duty']) {
         $stmt = $conn->prepare("SELECT id FROM duty_logs WHERE employee_id = ? AND duty_end IS NULL ORDER BY id DESC LIMIT 1");
         $stmt->bind_param("i", $user['id']);
@@ -90,43 +90,47 @@ $stmt = $conn->prepare("SELECT SUM(duration_minutes) as total_minutes FROM duty_
 $stmt->bind_param("i", $user['id']);
 $stmt->execute();
 $total_minutes = $stmt->get_result()->fetch_assoc()['total_minutes'] ?? 0;
+$stmt->close();
 
-$stmt = $conn->prepare("SELECT AVG(duration_minutes) as avg_minutes FROM duty_logs WHERE employee_id = ? AND duty_end IS NOT NULL");
-$stmt->bind_param("i", $user['id']);
-$stmt->execute();
-$avg_minutes = $stmt->get_result()->fetch_assoc()['avg_minutes'] ?? 0;
-
-// Ambil ringkasan data penjualan KESELURUHAN untuk pengguna (Overall Sales & Masak)
+// Perbaikan: Ganti query sales data untuk mencocokkan skema baru
 $total_sales_overall_dashboard = [
-    'total_paket_makan_minum_warga' => 0,
-    'total_paket_makan_minum_instansi' => 0,
-    'total_paket_snack' => 0,
-    'total_masak_paket' => 0,
-    'total_masak_snack' => 0,
+    'paket_sake' => 0,
+    'paket_anggur_merah' => 0,
+    'paket_tuak' => 0,
+    'paket_soju' => 0,
+    'paket_spicy_1' => 0,
+    'paket_spicy_2' => 0,
+    'paket_spicy_3' => 0,
 ];
 $stmt_sales_overall = $conn->prepare("
     SELECT
-        SUM(paket_makan_minum_warga) as total_paket_makan_minum_warga,
-        SUM(paket_makan_minum_instansi) as total_paket_makan_minum_instansi,
-        SUM(paket_snack) as total_paket_snack,
-        SUM(masak_paket) as total_masak_paket,
-        SUM(masak_snack) as total_masak_snack
+        COALESCE(SUM(paket_sake), 0) as paket_sake,
+        COALESCE(SUM(paket_anggur_merah), 0) as paket_anggur_merah,
+        COALESCE(SUM(paket_tuak), 0) as paket_tuak,
+        COALESCE(SUM(paket_soju), 0) as paket_soju,
+        COALESCE(SUM(paket_spicy_1), 0) as paket_spicy_1,
+        COALESCE(SUM(paket_spicy_2), 0) as paket_spicy_2,
+        COALESCE(SUM(paket_spicy_3), 0) as paket_spicy_3
     FROM sales_data
     WHERE employee_id = ?
 ");
-$stmt_sales_overall->bind_param("i", $user['id']);
-$stmt_sales_overall->execute();
-$result_sales_overall = $stmt_sales_overall->get_result()->fetch_assoc();
-if ($result_sales_overall) {
-    $total_sales_overall_dashboard = $result_sales_overall;
-}
-$stmt_sales_overall->close();
 
-$total_paket_terjual_dashboard = $total_sales_overall_dashboard['total_paket_makan_minum_warga'] +
-                                 $total_sales_overall_dashboard['total_paket_makan_minum_instansi'] +
-                                 $total_sales_overall_dashboard['total_paket_snack'] +
-                                 $total_sales_overall_dashboard['total_masak_paket'] +
-                                 $total_sales_overall_dashboard['total_masak_snack'];
+// Baris 117 yang diperbaiki
+if ($stmt_sales_overall) {
+    $stmt_sales_overall->bind_param("i", $user['id']);
+    $stmt_sales_overall->execute();
+    $result_sales_overall = $stmt_sales_overall->get_result()->fetch_assoc();
+    if ($result_sales_overall) {
+        $total_sales_overall_dashboard = $result_sales_overall;
+    }
+    $stmt_sales_overall->close();
+} else {
+    // Tangani error jika query gagal
+    error_log("Error preparing sales query in dashboard.php: " . $conn->error);
+}
+
+
+$total_paket_terjual_dashboard = array_sum($total_sales_overall_dashboard);
 
 
 // Get recent activities
@@ -134,6 +138,8 @@ $stmt = $conn->prepare("SELECT * FROM duty_logs WHERE employee_id = ? ORDER BY d
 $stmt->bind_param("i", $user['id']);
 $stmt->execute();
 $recent_activities = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$stmt->close();
+
 
 // Get current duty duration if on duty for alert
 $current_duty_duration_seconds = 0;
@@ -154,7 +160,7 @@ if ($user['is_on_duty'] && $user['current_duty_start']) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard - Galaxy Night Club</title>
+    <title>Dashboard - Elysium Night Club</title>
     <link rel="icon" href="LOGO_WOT.png" type="image/png">
     <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
     <link rel="stylesheet" href="style.css">
@@ -209,7 +215,7 @@ if ($user['is_on_duty'] && $user['current_duty_start']) {
                         ✨
                     </div>
                     <div class="profile-info">
-                        <h1>Sistem Manajemen Galaxy Night Club</h1>
+                        <h1>Sistem Manajemen Elysium Night Club</h1>
                         <div class="user-details">
                             <span class="user-icon">👤</span>
                             <span class="user-name"><?= htmlspecialchars($user['name']) ?></span>
@@ -288,7 +294,7 @@ if ($user['is_on_duty'] && $user['current_duty_start']) {
                     <div class="stat-icon">
                         💰 </div>
                     <div class="stat-content">
-                        <h3>Total Penjualan & Masak</h3>
+                        <h3>Total Penjualan</h3>
                         <p class="stat-value"><?= $total_paket_terjual_dashboard ?> Paket</p>
                     </div>
                 </div>

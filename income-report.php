@@ -10,41 +10,70 @@ $user = getCurrentUser();
 $pending_requests_count = getPendingRequestCount();
 
 // Definisi harga per paket
-$price_warga = 25000;
-$price_instansi = 18000;
-$price_snack = 15000;
+$price_sake = 20000;
+$price_anggur_merah = 20000;
+$price_tuak = 20000;
+$price_soju = 20000;
+$price_spicy_1 = 65000;
+$price_spicy_2 = 45000;
+$price_spicy_3 = 35000;
 
-$total_income_warga = 0;
-$total_income_instansi = 0;
-$total_income_snack = 0;
+$total_income_sake = 0;
+$total_income_anggur_merah = 0;
+$total_income_tuak = 0;
+$total_income_soju = 0;
+$total_income_spicy_1 = 0;
+$total_income_spicy_2 = 0;
+$total_income_spicy_3 = 0;
 $overall_total_income = 0;
 
-$total_warga_packages = 0;
-$total_instansi_packages = 0;
-$total_snack_packages = 0;
+$total_sake_packages = 0;
+$total_anggur_merah_packages = 0;
+$total_tuak_packages = 0;
+$total_soju_packages = 0;
+$total_spicy_1_packages = 0;
+$total_spicy_2_packages = 0;
+$total_spicy_3_packages = 0;
 
 // Ambil total pemasukan dari sales_data secara menyeluruh
 $stmt = $conn->prepare("
     SELECT
-        COALESCE(SUM(paket_makan_minum_warga), 0) as sum_warga,
-        COALESCE(SUM(paket_makan_minum_instansi), 0) as sum_instansi,
-        COALESCE(SUM(paket_snack), 0) as sum_snack
+        COALESCE(SUM(paket_sake), 0) as sum_sake,
+        COALESCE(SUM(paket_anggur_merah), 0) as sum_anggur_merah,
+        COALESCE(SUM(paket_tuak), 0) as sum_tuak,
+        COALESCE(SUM(paket_soju), 0) as sum_soju,
+        COALESCE(SUM(paket_spicy_1), 0) as sum_spicy_1,
+        COALESCE(SUM(paket_spicy_2), 0) as sum_spicy_2,
+        COALESCE(SUM(paket_spicy_3), 0) as sum_spicy_3
     FROM sales_data
 ");
-$stmt->execute();
-$result = $stmt->get_result()->fetch_assoc();
-$stmt->close();
 
-if ($result) {
-    $total_warga_packages = $result['sum_warga'];
-    $total_instansi_packages = $result['sum_instansi'];
-    $total_snack_packages = $result['sum_snack'];
+if ($stmt) {
+    $stmt->execute();
+    $result = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    
+    if ($result) {
+        $total_sake_packages = $result['sum_sake'];
+        $total_anggur_merah_packages = $result['sum_anggur_merah'];
+        $total_tuak_packages = $result['sum_tuak'];
+        $total_soju_packages = $result['sum_soju'];
+        $total_spicy_1_packages = $result['sum_spicy_1'];
+        $total_spicy_2_packages = $result['sum_spicy_2'];
+        $total_spicy_3_packages = $result['sum_spicy_3'];
 
-    $total_income_warga = $total_warga_packages * $price_warga;
-    $total_income_instansi = $total_instansi_packages * $price_instansi;
-    $total_income_snack = $total_snack_packages * $price_snack;
+        $total_income_sake = $total_sake_packages * $price_sake;
+        $total_income_anggur_merah = $total_anggur_merah_packages * $price_anggur_merah;
+        $total_income_tuak = $total_tuak_packages * $price_tuak;
+        $total_income_soju = $total_soju_packages * $price_soju;
+        $total_income_spicy_1 = $total_spicy_1_packages * $price_spicy_1;
+        $total_income_spicy_2 = $total_spicy_2_packages * $price_spicy_2;
+        $total_income_spicy_3 = $total_spicy_3_packages * $price_spicy_3;
 
-    $overall_total_income = $total_income_warga + $total_income_instansi + $total_income_snack;
+        $overall_total_income = $total_income_sake + $total_income_anggur_merah + $total_income_tuak + $total_income_soju + $total_income_spicy_1 + $total_income_spicy_2 + $total_income_spicy_3;
+    }
+} else {
+    die("Gagal menyiapkan query: " . $conn->error);
 }
 
 // --- Data untuk Grafik Omset Mingguan (Senin-Minggu) ---
@@ -61,25 +90,38 @@ $end_of_week->modify('+6 days');
 $stmt_daily = $conn->prepare("
     SELECT
         date,
-        SUM(paket_makan_minum_warga) as sum_warga_daily,
-        SUM(paket_makan_minum_instansi) as sum_instansi_daily,
-        SUM(paket_snack) as sum_snack_daily
+        SUM(paket_sake) as sum_sake_daily,
+        SUM(paket_anggur_merah) as sum_anggur_merah_daily,
+        SUM(paket_tuak) as sum_tuak_daily,
+        SUM(paket_soju) as sum_soju_daily,
+        SUM(paket_spicy_1) as sum_spicy_1_daily,
+        SUM(paket_spicy_2) as sum_spicy_2_daily,
+        SUM(paket_spicy_3) as sum_spicy_3_daily
     FROM sales_data
     WHERE date BETWEEN ? AND ?
     GROUP BY date
     ORDER BY date ASC
 ");
-$stmt_daily->bind_param("ss", $start_of_week->format('Y-m-d'), $end_of_week->format('Y-m-d'));
-$stmt_daily->execute();
-$daily_results = $stmt_daily->get_result();
-
-$chart_data_from_db = [];
-while ($row = $daily_results->fetch_assoc()) {
-    $chart_data_from_db[$row['date']] = (float) ($row['sum_warga_daily'] * $price_warga) +
-                                         (float) ($row['sum_instansi_daily'] * $price_instansi) +
-                                         (float) ($row['sum_snack_daily'] * $price_snack);
+if ($stmt_daily) {
+    $stmt_daily->bind_param("ss", $start_of_week->format('Y-m-d'), $end_of_week->format('Y-m-d'));
+    $stmt_daily->execute();
+    $daily_results = $stmt_daily->get_result();
+    
+    $chart_data_from_db = [];
+    while ($row = $daily_results->fetch_assoc()) {
+        $chart_data_from_db[$row['date']] = (float) ($row['sum_sake_daily'] * $price_sake) +
+                                             (float) ($row['sum_anggur_merah_daily'] * $price_anggur_merah) +
+                                             (float) ($row['sum_tuak_daily'] * $price_tuak) +
+                                             (float) ($row['sum_soju_daily'] * $price_soju) +
+                                             (float) ($row['sum_spicy_1_daily'] * $price_spicy_1) +
+                                             (float) ($row['sum_spicy_2_daily'] * $price_spicy_2) +
+                                             (float) ($row['sum_spicy_3_daily'] * $price_spicy_3);
+    }
+    $stmt_daily->close();
+} else {
+    error_log("Error preparing daily sales query in income-report.php: " . $conn->error);
 }
-$stmt_daily->close();
+
 
 $chart_labels = [];
 $chart_data_revenue = [];
@@ -103,33 +145,50 @@ $stmt_logs = $conn->prepare("
         sd.id,
         sd.date,
         sd.input_time,
-        sd.paket_makan_minum_warga,
-        sd.paket_makan_minum_instansi,
-        sd.paket_snack,
+        sd.paket_sake,
+        sd.paket_anggur_merah,
+        sd.paket_tuak,
+        sd.paket_soju,
+        sd.paket_spicy_1,
+        sd.paket_spicy_2,
+        sd.paket_spicy_3,
         e.name as employee_name
     FROM sales_data sd
     JOIN employees e ON sd.employee_id = e.id
     ORDER BY sd.input_time DESC
 ");
-$stmt_logs->execute();
-$log_results = $stmt_logs->get_result();
 
-while ($row = $log_results->fetch_assoc()) {
-    $transaction_omset = ($row['paket_makan_minum_warga'] * $price_warga) +
-                         ($row['paket_makan_minum_instansi'] * $price_instansi) +
-                         ($row['paket_snack'] * $price_snack);
-    
-    $omset_logs[] = [
-        'id' => $row['id'],
-        'date_time' => date('d/m/Y H:i:s', strtotime($row['input_time'])),
-        'employee_name' => $row['employee_name'],
-        'paket_makan_minum_warga' => $row['paket_makan_minum_warga'],
-        'paket_makan_minum_instansi' => $row['paket_makan_minum_instansi'],
-        'paket_snack' => $row['paket_snack'],
-        'omset_transaksi' => $transaction_omset
-    ];
+if ($stmt_logs) {
+    $stmt_logs->execute();
+    $log_results = $stmt_logs->get_result();
+
+    while ($row = $log_results->fetch_assoc()) {
+        $transaction_omset = ($row['paket_sake'] * $price_sake) +
+                             ($row['paket_anggur_merah'] * $price_anggur_merah) +
+                             ($row['paket_tuak'] * $price_tuak) +
+                             ($row['paket_soju'] * $price_soju) +
+                             ($row['paket_spicy_1'] * $price_spicy_1) +
+                             ($row['paket_spicy_2'] * $price_spicy_2) +
+                             ($row['paket_spicy_3'] * $price_spicy_3);
+        
+        $omset_logs[] = [
+            'id' => $row['id'],
+            'date_time' => date('d/m/Y H:i:s', strtotime($row['input_time'])),
+            'employee_name' => $row['employee_name'],
+            'paket_sake' => $row['paket_sake'],
+            'paket_anggur_merah' => $row['paket_anggur_merah'],
+            'paket_tuak' => $row['paket_tuak'],
+            'paket_soju' => $row['paket_soju'],
+            'paket_spicy_1' => $row['paket_spicy_1'],
+            'paket_spicy_2' => $row['paket_spicy_2'],
+            'paket_spicy_3' => $row['paket_spicy_3'],
+            'omset_transaksi' => $transaction_omset
+        ];
+    }
+    $stmt_logs->close();
+} else {
+    error_log("Error preparing logs query in income-report.php: " . $conn->error);
 }
-$stmt_logs->close();
 
 // --- Fungsionalitas Unduh Laporan Detail untuk Audit ---
 if (isset($_GET['export']) && $_GET['export'] == 'detailed_income') {
@@ -147,9 +206,13 @@ if (isset($_GET['export']) && $_GET['export'] == 'detailed_income') {
         'ID Transaksi',
         'Tanggal & Waktu Input',
         'Nama Anggota',
-        'Paket M&M Warga (Jumlah)',
-        'Paket M&M Instansi (Jumlah)',
-        'Paket Snack (Jumlah)',
+        'Sake (Jumlah)',
+        'Anggur Merah (Jumlah)',
+        'Tuak (Jumlah)',
+        'Soju (Jumlah)',
+        'Spicy 1 (Jumlah)',
+        'Spicy 2 (Jumlah)',
+        'Spicy 3 (Jumlah)',
         'Omset Transaksi (Rp)'
     ];
     fputcsv($output, $headers);
@@ -159,9 +222,13 @@ if (isset($_GET['export']) && $_GET['export'] == 'detailed_income') {
             $log['id'],
             $log['date_time'],
             htmlspecialchars_decode($log['employee_name']),
-            $log['paket_makan_minum_warga'],
-            $log['paket_makan_minum_instansi'],
-            $log['paket_snack'],
+            $log['paket_sake'],
+            $log['paket_anggur_merah'],
+            $log['paket_tuak'],
+            $log['paket_soju'],
+            $log['paket_spicy_1'],
+            $log['paket_spicy_2'],
+            $log['paket_spicy_3'],
             $log['omset_transaksi']
         ];
         fputcsv($output, $data_row);
@@ -181,7 +248,7 @@ function formatRupiah($amount) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Laporan Pemasukan - Warung Om Tante</title>
+    <title>Laporan Pemasukan - Elysium Night Club</title>
     <link rel="icon" href="LOGO_WOT.png" type="image/png">
     <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
     <link rel="stylesheet" href="style.css">
@@ -388,31 +455,59 @@ function formatRupiah($amount) {
 
             <div class="income-report-grid">
                 <div class="income-card">
-                    <div class="icon" style="color: #60a5fa;">👨‍👩‍👧‍👦</div>
-                    <h4>Pemasukan Paket Warga</h4>
-                    <p class="value"><?= formatRupiah($total_income_warga) ?></p>
-                    <p class="detail-text"><?= $total_warga_packages ?> paket @ <?= formatRupiah($price_warga) ?></p>
+                    <div class="icon" style="color: #60a5fa;">🍶</div>
+                    <h4>Pemasukan Sake</h4>
+                    <p class="value"><?= formatRupiah($total_income_sake) ?></p>
+                    <p class="detail-text"><?= $total_sake_packages ?> paket @ <?= formatRupiah($price_sake) ?></p>
                 </div>
 
                 <div class="income-card">
-                    <div class="icon" style="color: #fbbf24;">🏢</div>
-                    <h4>Pemasukan Paket Instansi</h4>
-                    <p class="value"><?= formatRupiah($total_income_instansi) ?></p>
-                    <p class="detail-text"><?= $total_instansi_packages ?> paket @ <?= formatRupiah($price_instansi) ?></p>
+                    <div class="icon" style="color: #fbbf24;">🍷</div>
+                    <h4>Pemasukan Anggur Merah</h4>
+                    <p class="value"><?= formatRupiah($total_income_anggur_merah) ?></p>
+                    <p class="detail-text"><?= $total_anggur_merah_packages ?> paket @ <?= formatRupiah($price_anggur_merah) ?></p>
                 </div>
 
                 <div class="income-card">
-                    <div class="icon" style="color: #10b981;">🍰</div>
-                    <h4>Pemasukan Paket Snack</h4>
-                    <p class="value"><?= formatRupiah($total_income_snack) ?></p>
-                    <p class="detail-text"><?= $total_snack_packages ?> paket @ <?= formatRupiah($price_snack) ?></p>
+                    <div class="icon" style="color: #10b981;">🍶</div>
+                    <h4>Pemasukan Tuak</h4>
+                    <p class="value"><?= formatRupiah($total_income_tuak) ?></p>
+                    <p class="detail-text"><?= $total_tuak_packages ?> paket @ <?= formatRupiah($price_tuak) ?></p>
+                </div>
+
+                <div class="income-card">
+                    <div class="icon" style="color: #10b981;">🍶</div>
+                    <h4>Pemasukan Soju</h4>
+                    <p class="value"><?= formatRupiah($total_income_soju) ?></p>
+                    <p class="detail-text"><?= $total_soju_packages ?> paket @ <?= formatRupiah($price_soju) ?></p>
+                </div>
+
+                <div class="income-card">
+                    <div class="icon" style="color: #dc2626;">🌶️</div>
+                    <h4>Pemasukan Spicy 1</h4>
+                    <p class="value"><?= formatRupiah($total_income_spicy_1) ?></p>
+                    <p class="detail-text"><?= $total_spicy_1_packages ?> paket @ <?= formatRupiah($price_spicy_1) ?></p>
+                </div>
+
+                <div class="income-card">
+                    <div class="icon" style="color: #ef4444;">🌶️</div>
+                    <h4>Pemasukan Spicy 2</h4>
+                    <p class="value"><?= formatRupiah($total_income_spicy_2) ?></p>
+                    <p class="detail-text"><?= $total_spicy_2_packages ?> paket @ <?= formatRupiah($price_spicy_2) ?></p>
+                </div>
+
+                <div class="income-card">
+                    <div class="icon" style="color: #fca5a5;">🌶️</div>
+                    <h4>Pemasukan Spicy 3</h4>
+                    <p class="value"><?= formatRupiah($total_income_spicy_3) ?></p>
+                    <p class="detail-text"><?= $total_spicy_3_packages ?> paket @ <?= formatRupiah($price_spicy_3) ?></p>
                 </div>
 
                 <div class="income-card total">
                     <div class="icon" style="color: var(--success-color);">💰</div>
                     <h4>Total Pemasukan Keseluruhan</h4>
                     <p class="value"><?= formatRupiah($overall_total_income) ?></p>
-                    <p class="detail-text">Gabungan dari semua penjualan paket makan minum & snack</p>
+                    <p class="detail-text">Gabungan dari semua penjualan paket</p>
                 </div>
             </div>
 
@@ -437,9 +532,13 @@ function formatRupiah($amount) {
                                     <tr>
                                         <th>Tanggal & Waktu</th>
                                         <th>Nama Anggota</th>
-                                        <th>P. M&M Warga</th>
-                                        <th>P. M&M Instansi</th>
-                                        <th>Paket Snack</th>
+                                        <th>Sake</th>
+                                        <th>Anggur Merah</th>
+                                        <th>Tuak</th>
+                                        <th>Soju</th>
+                                        <th>Spicy 1</th>
+                                        <th>Spicy 2</th>
+                                        <th>Spicy 3</th>
                                         <th>Omset Transaksi</th>
                                     </tr>
                                 </thead>
@@ -448,9 +547,13 @@ function formatRupiah($amount) {
                                     <tr>
                                         <td data-label="Tanggal & Waktu"><?= $log['date_time'] ?></td>
                                         <td data-label="Nama Anggota" class="employee-name-cell"><?= htmlspecialchars($log['employee_name']) ?></td>
-                                        <td data-label="P. M&M Warga"><?= $log['paket_makan_minum_warga'] ?></td>
-                                        <td data-label="P. M&M Instansi"><?= $log['paket_makan_minum_instansi'] ?></td>
-                                        <td data-label="Paket Snack"><?= $log['paket_snack'] ?></td>
+                                        <td data-label="Sake"><?= $log['paket_sake'] ?></td>
+                                        <td data-label="Anggur Merah"><?= $log['paket_anggur_merah'] ?></td>
+                                        <td data-label="Tuak"><?= $log['paket_tuak'] ?></td>
+                                        <td data-label="Soju"><?= $log['paket_soju'] ?></td>
+                                        <td data-label="Spicy 1"><?= $log['paket_spicy_1'] ?></td>
+                                        <td data-label="Spicy 2"><?= $log['paket_spicy_2'] ?></td>
+                                        <td data-label="Spicy 3"><?= $log['paket_spicy_3'] ?></td>
                                         <td data-label="Omset Transaksi"><?= formatRupiah($log['omset_transaksi']) ?></td>
                                     </tr>
                                     <?php endforeach; ?>

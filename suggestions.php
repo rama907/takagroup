@@ -58,7 +58,7 @@ if (hasRole(['ceo', 'direktur', 'wakil_direktur', 'manager'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Saran & Kritik - Warung Om Tante</title>
+    <title>Saran & Kritik - Elysium Night Club</title>
     <link rel="icon" href="LOGO_WOT.png" type="image/png">
     <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
     <link rel="stylesheet" href="style.css">

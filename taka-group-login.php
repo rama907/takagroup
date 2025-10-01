@@ -111,6 +111,7 @@ $status_is_open = $on_duty_employees_count > 0;
 
         .booking-info-card:hover {
             transform: translateY(-5px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.3);
             border-color: #ffc107;
         }
 
@@ -208,10 +209,13 @@ $status_is_open = $on_duty_employees_count > 0;
         <div class="right-side-panel">
             <div class="booking-info-card">
                 <span class="icon" style="font-size: 3rem; color: #ffc107;">🗓️</span>
-                <h3>Booking Ruangan Galaxy Night Club By Taka Group</h3>
+                <h3>Booking Ruangan Elysium Night Club By Taka Group</h3>
                 <p style="color: #adb5bd;">Dapatkan pengalaman eksklusif dengan memesan ruangan-ruangan VIP kami.</p>
                 <a href="public-booking.php" class="btn btn-warning btn-booking">
                     Booking Sekarang
+                </a>
+                <a href="https://elysium-night-club.my.canva.site/elysium-house-book" target="_blank" class="btn btn-primary btn-booking" style="margin-top: 10px;">
+                    Katalog Elysium
                 </a>
             </div>
             
@@ -225,8 +229,8 @@ $status_is_open = $on_duty_employees_count > 0;
                 </h4>
             </div>
         </div>
-        </div>
-    
+    </div>
+
     <script src="script.js"></script>
 </body>
 </html>

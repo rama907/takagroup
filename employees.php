@@ -146,7 +146,7 @@ foreach ($employees as $key => $employee) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Daftar Anggota - Warung Om Tante</title>
+    <title>Daftar Anggota - Elysium Night Club</title>
     <link rel="icon" href="LOGO_WOT.png" type="image/png">
     <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
     <link rel="stylesheet" href="style.css">
@@ -162,7 +162,7 @@ foreach ($employees as $key => $employee) {
                     <span class="page-icon">👥</span>
                     Daftar Anggota
                 </h1>
-                <p>Daftar semua anggota Warung Om Tante</p>
+                <p>Daftar semua anggota Elysium Night Club</p>
             </div>
 
             <?php if (isset($success)): ?>

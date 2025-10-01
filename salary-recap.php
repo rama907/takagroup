@@ -29,7 +29,7 @@ $overtime_hourly_bonus = [
     'magang' => 15000,
 ];
 
-$min_duty_hours_for_base_salary = 8; // Perubahan: Minimal jam kerja untuk mendapatkan gaji pokok
+$min_duty_hours_for_base_salary = 8;
 $min_duty_minutes_for_base_salary = $min_duty_hours_for_base_salary * 60;
 
 $min_duty_hours_for_bonus = 21;
@@ -173,11 +173,13 @@ $total_payroll_expenditure = 0;
 $stmt = $conn->query("
     SELECT e.id, e.name, e.role, e.is_on_duty, e.is_paid,
            COALESCE(duty_summary.total_duty_minutes, 0) as total_duty_minutes,
-           COALESCE(sales_summary.total_paket_makan_minum_warga, 0) as total_paket_makan_minum_warga,
-           COALESCE(sales_summary.total_paket_makan_minum_instansi, 0) as total_paket_makan_minum_instansi,
-           COALESCE(sales_summary.total_paket_snack, 0) as total_paket_snack,
-           COALESCE(sales_summary.total_masak_paket, 0) as total_masak_paket,
-           COALESCE(sales_summary.total_masak_snack, 0) as total_masak_snack
+           COALESCE(sales_summary.paket_sake, 0) as paket_sake,
+           COALESCE(sales_summary.paket_anggur_merah, 0) as paket_anggur_merah,
+           COALESCE(sales_summary.paket_tuak, 0) as paket_tuak,
+           COALESCE(sales_summary.paket_soju, 0) as paket_soju,
+           COALESCE(sales_summary.paket_spicy_1, 0) as paket_spicy_1,
+           COALESCE(sales_summary.paket_spicy_2, 0) as paket_spicy_2,
+           COALESCE(sales_summary.paket_spicy_3, 0) as paket_spicy_3
     FROM employees e
     LEFT JOIN (
         SELECT
@@ -190,23 +192,28 @@ $stmt = $conn->query("
     LEFT JOIN (
         SELECT
             employee_id,
-            SUM(paket_makan_minum_warga) as total_paket_makan_minum_warga,
-            SUM(paket_makan_minum_instansi) as total_paket_makan_minum_instansi,
-            SUM(paket_snack) as total_paket_snack,
-            SUM(masak_paket) as total_masak_paket,
-            SUM(masak_snack) as total_masak_snack
+            SUM(paket_sake) as paket_sake,
+            SUM(paket_anggur_merah) as paket_anggur_merah,
+            SUM(paket_tuak) as paket_tuak,
+            SUM(paket_soju) as paket_soju,
+            SUM(paket_spicy_1) as paket_spicy_1,
+            SUM(paket_spicy_2) as paket_spicy_2,
+            SUM(paket_spicy_3) as paket_spicy_3
         FROM sales_data
         GROUP BY employee_id
     ) as sales_summary ON e.id = sales_summary.employee_id
     WHERE e.status = 'active'
     ORDER BY
         CASE e.role
-            WHEN 'direktur' THEN 1
-            WHEN 'wakil_direktur' THEN 2
-            WHEN 'manager' THEN 3
-            WHEN 'chef' THEN 4
-            WHEN 'karyawan' THEN 5
-            WHEN 'magang' THEN 6
+            WHEN 'ceo' THEN 1
+            WHEN 'direktur' THEN 2
+            WHEN 'wakil_direktur' THEN 3
+            WHEN 'manager' THEN 4
+            WHEN 'barista' THEN 5
+            WHEN 'waiters' THEN 6
+            WHEN 'guard' THEN 7
+            WHEN 'karyawan' THEN 8
+            WHEN 'magang' THEN 9
         END,
         e.name
 ");
@@ -216,11 +223,14 @@ foreach ($employees_raw_data as $employee) {
     $employee_id = $employee['id'];
     $employee_role = $employee['role'];
     $total_duty_minutes = $employee['total_duty_minutes'];
-    $total_paket_makan_minum_warga = $employee['total_paket_makan_minum_warga'];
-    $total_paket_makan_minum_instansi = $employee['total_paket_makan_minum_instansi'];
-    $total_paket_snack = $employee['total_paket_snack'];
-    $total_masak_paket = $employee['total_masak_paket'];
-    $total_masak_snack = $employee['total_masak_snack'];
+
+    $total_sake = $employee['paket_sake'] ?? 0;
+    $total_anggur_merah = $employee['paket_anggur_merah'] ?? 0;
+    $total_tuak = $employee['paket_tuak'] ?? 0;
+    $total_soju = $employee['paket_soju'] ?? 0;
+    $total_spicy_1 = $employee['paket_spicy_1'] ?? 0;
+    $total_spicy_2 = $employee['paket_spicy_2'] ?? 0;
+    $total_spicy_3 = $employee['paket_spicy_3'] ?? 0;
 
     $overtime_minutes = 0;
     $overtime_hours_display = 0;
@@ -251,7 +261,9 @@ foreach ($employees_raw_data as $employee) {
         }
     }
     
-    $total_penjualan_paket = $total_paket_makan_minum_warga + $total_paket_makan_minum_instansi + $total_paket_snack;
+    // Perbaikan: Menghitung total penjualan dari produk baru
+    $total_penjualan_paket = $total_sake + $total_anggur_merah + $total_tuak + $total_soju + $total_spicy_1 + $total_spicy_2 + $total_spicy_3;
+
     $bonus_penjualan = 0;
     if (in_array($employee_role, ['karyawan', 'magang'])) {
         if ($total_penjualan_paket >= $sales_bonus_threshold) {
@@ -270,7 +282,8 @@ foreach ($employees_raw_data as $employee) {
             $is_bonus_cut = true;
         }
     } elseif ($employee_role === 'chef') {
-        $performance_indicator = $total_masak_paket + $total_masak_snack;
+        // Logika untuk chef, asumsi tidak ada produk masak lagi
+        $performance_indicator = 0; 
         if ($performance_indicator < $performance_cut_off_threshold) {
             $bonus_21_jam *= 0.5;
             $total_bonus_lembur *= 0.5;
@@ -287,13 +300,14 @@ foreach ($employees_raw_data as $employee) {
         'role' => $employee['role'],
         'is_paid' => (bool)$employee['is_paid'],
         'total_duty_minutes' => $total_duty_minutes,
-        'total_paket_makan_minum_warga' => $total_paket_makan_minum_warga,
-        'total_paket_makan_minum_instansi' => $total_paket_makan_minum_instansi,
-        'total_paket_snack' => $total_paket_snack,
-        'total_masak_paket' => $total_masak_paket,
-        'total_masak_snack' => $total_masak_snack,
+        'paket_sake' => $total_sake,
+        'paket_anggur_merah' => $total_anggur_merah,
+        'paket_tuak' => $total_tuak,
+        'paket_soju' => $total_soju,
+        'paket_spicy_1' => $total_spicy_1,
+        'paket_spicy_2' => $total_spicy_2,
+        'paket_spicy_3' => $total_spicy_3,
         'total_sales_packages' => $total_penjualan_paket,
-        'total_masak_packages' => $total_masak_paket + $total_masak_snack,
         'overtime_hours_display' => $overtime_hours_display,
         'overtime_remaining_minutes' => $overtime_remaining_minutes,
         'gaji_pokok' => $gaji_pokok,
@@ -323,11 +337,13 @@ if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
         'Jabatan',
         'Total Jam Duty (Jam)',
         'Total Jam Duty (Menit)',
-        'Total Paket M&M Warga',
-        'Total Paket M&M Instansi',
-        'Total Paket Snack',
-        'Total Masak Paket',
-        'Total Masak Snack',
+        'Sake',
+        'Anggur Merah',
+        'Tuak',
+        'Soju',
+        'Spicy 1',
+        'Spicy 2',
+        'Spicy 3',
         'Total Penjualan Paket',
         'Jam Lembur (Jam)',
         'Menit Lembur (Sisa)',
@@ -347,11 +363,13 @@ if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
             getRoleDisplayName($row['role']),
             floor($row['total_duty_minutes'] / 60),
             $row['total_duty_minutes'],
-            $row['total_paket_makan_minum_warga'],
-            $row['total_paket_makan_minum_instansi'],
-            $row['total_paket_snack'],
-            $row['total_masak_paket'],
-            $row['total_masak_snack'],
+            $row['paket_sake'],
+            $row['paket_anggur_merah'],
+            $row['paket_tuak'],
+            $row['paket_soju'],
+            $row['paket_spicy_1'],
+            $row['paket_spicy_2'],
+            $row['paket_spicy_3'],
             $row['total_sales_packages'],
             $row['overtime_hours_display'],
             $row['overtime_remaining_minutes'],
@@ -377,7 +395,7 @@ if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rekap Gaji - Warung Om Tante</title>
+    <title>Rekap Gaji - Elysium Night Club</title>
     <link rel="icon" href="LOGO_WOT.png" type="image/png">
     <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
     <link rel="stylesheet" href="style.css">
@@ -438,7 +456,7 @@ if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
                     <span class="page-icon">💸</span>
                     Rekap Gaji
                 </h1>
-                <p>Ringkasan perhitungan gaji untuk semua anggota Warung Om Tante</p>
+                <p>Ringkasan perhitungan gaji untuk semua anggota Elysium Night Club</p>
                 <div class="page-actions" style="margin-top: var(--spacing-md);">
                     <a href="salary-recap.php?export=spreadsheet" class="btn btn-info" target="_blank">
                         <span class="btn-icon">⬇️</span>
@@ -512,7 +530,7 @@ if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
                                     <th>Nama</th>
                                     <th>Jabatan</th>
                                     <th>Total Jam Duty</th>
-                                    <th>Total Penjualan/Masak</th>
+                                    <th>Total Penjualan</th>
                                     <th>Jam Lembur</th>
                                     <th>Gaji Pokok</th>
                                     <th>Bonus Penjualan</th>
@@ -548,7 +566,7 @@ if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
                                             <?= formatDuration($employee['total_duty_minutes']) ?>
                                         </td>
                                         <td data-label="Total Penjualan">
-                                            <?= $employee['role'] === 'chef' ? $employee['total_masak_packages'] . ' Masak' : $employee['total_sales_packages'] . ' Paket' ?>
+                                            <?= $employee['total_sales_packages'] ?> Paket
                                         </td>
                                         <td data-label="Jam Lembur">
                                             <?php 
@@ -614,5 +632,20 @@ if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
     </div>
 
     <script src="script.js"></script>
+    <script>
+        function toggleNewPasswordInput() {
+            const newPasswordGroup = document.getElementById('new-password-group');
+            const newPasswordInput = document.getElementById('new_password');
+            const resetNewRadio = document.getElementById('reset_new');
+    
+            if (resetNewRadio.checked) {
+                newPasswordGroup.style.display = 'block';
+                newPasswordInput.setAttribute('required', 'required');
+            } else {
+                newPasswordGroup.style.display = 'none';
+                newPasswordInput.removeAttribute('required');
+            }
+        }
+    </script>
 </body>
 </html>

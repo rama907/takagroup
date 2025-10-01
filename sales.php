@@ -10,6 +10,7 @@ $user = getCurrentUser();
 
 // Tentukan apakah pengguna memiliki peran admin yang diizinkan untuk menginput data orang lain
 $is_admin_or_manager = hasRole(['ceo', 'direktur', 'wakil_direktur', 'manager']);
+$is_director_level = hasRole(['ceo', 'direktur', 'wakil_direktur']);
 
 // Inisialisasi ID karyawan yang akan diinput datanya. Defaultnya adalah user yang login.
 $employee_id_to_submit = $user['id'];
@@ -42,8 +43,7 @@ $error_message = null;
 // --- Handle Delete Sales Entry ---
 if (($_SERVER['REQUEST_METHOD'] === 'POST') && (isset($_POST['action']) && $_POST['action'] === 'delete_sales_entry')) {
     $sales_entry_id = (int)($_POST['sales_entry_id'] ?? 0);
-    
-    // Perbaikan: Hapus entri berdasarkan ID entri, tidak perlu employee_id dari sesi
+
     if ($sales_entry_id <= 0) {
         $error_message = "ID entri penjualan tidak valid!";
     } else {
@@ -51,7 +51,7 @@ if (($_SERVER['REQUEST_METHOD'] === 'POST') && (isset($_POST['action']) && $_POS
         try {
             // Ambil detail entri sebelum dihapus untuk notifikasi
             $stmt_get_entry = $conn->prepare("
-                SELECT paket_makan_minum_warga, paket_makan_minum_instansi, paket_snack, masak_paket, masak_snack, date, input_time, employee_id
+                SELECT *, date, input_time, employee_id
                 FROM sales_data
                 WHERE id = ?
             ");
@@ -81,11 +81,13 @@ if (($_SERVER['REQUEST_METHOD'] === 'POST') && (isset($_POST['action']) && $_POS
                 sendDiscordNotification([
                     'employee_name' => getEmployeeNameById($entry_details['employee_id']),
                     'sales_date_time' => date('d/m/Y H:i', strtotime($entry_details['input_time'])),
-                    'paket_makan_minum_warga' => $entry_details['paket_makan_minum_warga'],
-                    'paket_makan_minum_instansi' => $entry_details['paket_makan_minum_instansi'],
-                    'paket_snack' => $entry_details['paket_snack'],
-                    'masak_paket' => $entry_details['masak_paket'],
-                    'masak_snack' => $entry_details['masak_snack'],
+                    'paket_sake' => $entry_details['paket_sake'] ?? 0,
+                    'paket_anggur_merah' => $entry_details['paket_anggur_merah'] ?? 0,
+                    'paket_tuak' => $entry_details['paket_tuak'] ?? 0,
+                    'paket_soju' => $entry_details['paket_soju'] ?? 0,
+                    'paket_spicy_1' => $entry_details['paket_spicy_1'] ?? 0,
+                    'paket_spicy_2' => $entry_details['paket_spicy_2'] ?? 0,
+                    'paket_spicy_3' => $entry_details['paket_spicy_3'] ?? 0,
                 ], 'sale_deleted');
 
             } else {
@@ -113,23 +115,22 @@ if (isset($_GET['msg']) && isset($_GET['type'])) {
     }
 }
 
-
-// Handle form submission dengan sistem multiple input per hari
+// Handle form submission
 if (($_SERVER['REQUEST_METHOD'] === 'POST') && (isset($_POST['action']) && $_POST['action'] === 'update_sales')) {
     $employee_id_from_form = (int)($_POST['employee_id'] ?? $user['id']);
-    $paket_makan_minum_warga = (int)($_POST['paket_makan_minum_warga'] ?? 0);
-    $paket_makan_minum_instansi = (int)($_POST['paket_makan_minum_instansi'] ?? 0);
-    $paket_snack = (int)($_POST['paket_snack'] ?? 0);
-    $masak_paket = (int)($_POST['masak_paket'] ?? 0);
-    $masak_snack = (int)($_POST['masak_snack'] ?? 0);
     $date_input = $_POST['date'] ?? '';
+
+    $paket_sake = (int)($_POST['paket_sake'] ?? 0);
+    $paket_anggur_merah = (int)($_POST['paket_anggur_merah'] ?? 0);
+    $paket_tuak = (int)($_POST['paket_tuak'] ?? 0);
+    $paket_soju = (int)($_POST['paket_soju'] ?? 0);
+    
+    $paket_spicy_1 = $is_director_level ? (int)($_POST['paket_spicy_1'] ?? 0) : 0;
+    $paket_spicy_2 = $is_director_level ? (int)($_POST['paket_spicy_2'] ?? 0) : 0;
+    $paket_spicy_3 = $is_director_level ? (int)($_POST['paket_spicy_3'] ?? 0) : 0;
     
     $error_message = null; 
 
-    if ($paket_makan_minum_instansi > 0 && $paket_makan_minum_instansi < 15) {
-        $error_message = "Paket Makan Minum Instansi minimal 15 paket!";
-    }
-    
     if (empty($date_input) && !$error_message) { 
         $error_message = "Tanggal harus diisi!";
     }
@@ -182,21 +183,27 @@ if (($_SERVER['REQUEST_METHOD'] === 'POST') && (isset($_POST['action']) && $_POS
     
     try {
         $stmt = $conn->prepare("
-            INSERT INTO sales_data (employee_id, paket_makan_minum_warga, paket_makan_minum_instansi, paket_snack, masak_paket, masak_snack, date, week_number, year, input_time)
-            VALUES (?, ?, ?, ?, ?, ?, STR_TO_DATE(?, '%Y-%m-%d'), ?, ?, ?)
+            INSERT INTO sales_data (
+                employee_id, date, input_time, week_number, year, 
+                paket_sake, paket_anggur_merah, paket_tuak, paket_soju,
+                paket_spicy_1, paket_spicy_2, paket_spicy_3
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
         
-        $stmt->bind_param("iiiiiiisis", 
+        $stmt->bind_param("isssiiiiiiii", 
             $employee_id_from_form, 
-            $paket_makan_minum_warga,
-            $paket_makan_minum_instansi,
-            $paket_snack, 
-            $masak_paket, 
-            $masak_snack, 
             $formatted_date, 
-            $week_number, 
+            $input_time,
+            $week_number,
             $year,
-            $input_time 
+            $paket_sake,
+            $paket_anggur_merah,
+            $paket_tuak,
+            $paket_soju,
+            $paket_spicy_1,
+            $paket_spicy_2,
+            $paket_spicy_3
         );
         
         $result = $stmt->execute();
@@ -211,11 +218,13 @@ if (($_SERVER['REQUEST_METHOD'] === 'POST') && (isset($_POST['action']) && $_POS
                 'employee_name' => getEmployeeNameById($employee_id_from_form),
                 'date' => $formatted_date,
                 'input_time' => $input_time,
-                'paket_makan_minum_warga' => $paket_makan_minum_warga,
-                'paket_makan_minum_instansi' => $paket_makan_minum_instansi,
-                'paket_snack' => $paket_snack,
-                'masak_paket' => $masak_paket,
-                'masak_snack' => $masak_snack
+                'paket_sake' => $paket_sake,
+                'paket_anggur_merah' => $paket_anggur_merah,
+                'paket_tuak' => $paket_tuak,
+                'paket_soju' => $paket_soju,
+                'paket_spicy_1' => $paket_spicy_1,
+                'paket_spicy_2' => $paket_spicy_2,
+                'paket_spicy_3' => $paket_spicy_3
             ], 'sale_input');
             
             header("Location: " . $_SERVER['PHP_SELF'] . "?msg=" . urlencode($success_message) . "&type=success" . "&employee_id=" . $employee_id_to_submit);
@@ -232,43 +241,25 @@ if (($_SERVER['REQUEST_METHOD'] === 'POST') && (isset($_POST['action']) && $_POS
     }
 }
 
-// Perbaikan di sini: Ambil data mingguan dari kolom baru
-$date_obj_for_summary = null;
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['date'])) {
-    $temp_date_input = $_POST['date'];
-    $temp_date_obj_YMD = DateTime::createFromFormat('Y-m-d', $temp_date_input);
-    $temp_date_obj_DMY = DateTime::createFromFormat('d/m/Y', $temp_date_input);
-
-    if ($temp_date_obj_YMD && DateTime::getLastErrors()['warning_count'] == 0 && DateTime::getLastErrors()['error_count'] == 0) {
-        $date_obj_for_summary = $temp_date_obj_YMD;
-    } elseif ($temp_date_obj_DMY && DateTime::getLastErrors()['warning_count'] == 0 && DateTime::getLastErrors()['error_count'] == 0) {
-        $date_obj_for_summary = $temp_date_obj_DMY;
-    } else {
-        $date_obj_for_summary = new DateTime();
-    }
-} else {
-    $date_obj_for_summary = new DateTime();
-}
-
-
-// --- Perbaikan di sini: Query untuk Ringkasan Input Makan Minum (menyeluruh) ---
-// Gunakan $employee_id_to_submit untuk filter data
+// Query untuk Ringkasan Input Penjualan (menyeluruh)
 $overall_sales_summary = [
-    'total_paket_makan_minum_warga' => 0,
-    'total_paket_makan_minum_instansi' => 0,
-    'total_paket_snack' => 0,
-    'total_masak_paket' => 0,
-    'total_masak_snack' => 0,
-    'total_entries' => 0
-]; 
+    'paket_sake' => 0,
+    'paket_anggur_merah' => 0,
+    'paket_tuak' => 0,
+    'paket_soju' => 0,
+    'paket_spicy_1' => 0,
+    'paket_spicy_2' => 0,
+    'paket_spicy_3' => 0,
+];
 $stmt = $conn->prepare("
     SELECT 
-        SUM(paket_makan_minum_warga) as total_paket_makan_minum_warga,
-        SUM(paket_makan_minum_instansi) as total_paket_makan_minum_instansi,
-        SUM(paket_snack) as total_paket_snack,
-        SUM(masak_paket) as total_masak_paket,
-        SUM(masak_snack) as total_masak_snack,
-        COUNT(*) as total_entries
+        SUM(paket_sake) as paket_sake,
+        SUM(paket_anggur_merah) as paket_anggur_merah,
+        SUM(paket_tuak) as paket_tuak,
+        SUM(paket_soju) as paket_soju,
+        SUM(paket_spicy_1) as paket_spicy_1,
+        SUM(paket_spicy_2) as paket_spicy_2,
+        SUM(paket_spicy_3) as paket_spicy_3
     FROM sales_data 
     WHERE employee_id = ?
 ");
@@ -279,6 +270,8 @@ if ($overall_sales_summary_result) {
     $overall_sales_summary = $overall_sales_summary_result;
 }
 $stmt->close();
+
+$total_overall_sales = array_sum($overall_sales_summary);
 
 
 $today = date('Y-m-d');
@@ -294,28 +287,31 @@ $stmt->execute();
 $today_data = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt->close();
 
-// Hitung total harian dari kolom baru
+// Hitung total harian
 $daily_total = [
-    'paket_makan_minum_warga' => 0,
-    'paket_makan_minum_instansi' => 0,
-    'paket_snack' => 0,
-    'masak_paket' => 0,
-    'masak_snack' => 0,
+    'paket_sake' => 0,
+    'paket_anggur_merah' => 0,
+    'paket_tuak' => 0,
+    'paket_soju' => 0,
+    'paket_spicy_1' => 0,
+    'paket_spicy_2' => 0,
+    'paket_spicy_3' => 0,
     'total_entries' => count($today_data)
 ];
-
 foreach ($today_data as $entry) {
-    $daily_total['paket_makan_minum_warga'] += $entry['paket_makan_minum_warga'];
-    $daily_total['paket_makan_minum_instansi'] += $entry['paket_makan_minum_instansi'];
-    $daily_total['paket_snack'] += $entry['paket_snack'];
-    $daily_total['masak_paket'] += $entry['masak_paket'];
-    $daily_total['masak_snack'] += $entry['masak_snack'];
+    $daily_total['paket_sake'] += $entry['paket_sake'];
+    $daily_total['paket_anggur_merah'] += $entry['paket_anggur_merah'];
+    $daily_total['paket_tuak'] += $entry['paket_tuak'];
+    $daily_total['paket_soju'] += $entry['paket_soju'];
+    $daily_total['paket_spicy_1'] += $entry['paket_spicy_1'];
+    $daily_total['paket_spicy_2'] += $entry['paket_spicy_2'];
+    $daily_total['paket_spicy_3'] += $entry['paket_spicy_3'];
 }
 
 
 $recent_sales = []; 
 $stmt = $conn->prepare("
-    SELECT *, TIME(input_time) as input_hour 
+    SELECT *
     FROM sales_data 
     WHERE employee_id = ? 
     ORDER BY input_time DESC 
@@ -333,10 +329,63 @@ $stmt->close();
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Data Penjualan - Warung Om Tante</title>
+    <title>Data Penjualan - Elysium Night Club</title>
     <link rel="icon" href="LOGO_WOT.png" type="image/png">
     <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
     <link rel="stylesheet" href="style.css">
+    <style>
+        .sales-input-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: var(--spacing-md);
+            margin-top: var(--spacing-lg);
+        }
+        .product-card {
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: var(--spacing-md);
+            display: flex;
+            flex-direction: column;
+            gap: var(--spacing-xs);
+            position: relative;
+            background: var(--bg-secondary);
+        }
+        .product-card.active {
+            background: var(--primary-light);
+            border-color: var(--primary-color);
+        }
+        .product-card label {
+            font-size: 1rem;
+            font-weight: 600;
+        }
+        .product-card p {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+        .quantity-group {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-sm);
+            margin-top: var(--spacing-sm);
+        }
+        .quantity-group input {
+            width: 70px;
+            text-align: center;
+        }
+        .product-card-spicy {
+            background-color: var(--danger-light);
+            border-color: var(--danger-color);
+        }
+        .today-badge {
+            background-color: var(--info-color);
+            color: white;
+            padding: 2px 8px;
+            border-radius: var(--radius-sm);
+            font-size: 0.75rem;
+            margin-left: var(--spacing-sm);
+            font-weight: 600;
+        }
+    </style>
 </head>
 <body>
     <div class="dashboard-container">
@@ -349,7 +398,7 @@ $stmt->close();
                     <span class="page-icon">💰</span>
                     Data Penjualan
                 </h1>
-                <p>Input dan kelola data penjualan harian Anda. Anda dapat menginput beberapa kali dalam sehari.</p>
+                <p>Input dan kelola data penjualan harian Anda.</p>
             </div>
 
             <?php if (isset($success_message)): ?>
@@ -360,267 +409,224 @@ $stmt->close();
                 <div class="error-message">❌ <?= htmlspecialchars($error_message) ?></div>
             <?php endif; ?>
 
-            <?php // Tampilkan informasi khusus berdasarkan peran
-            if ($selected_employee_role === 'chef'): ?>
-                <div class="info-message" style="margin-bottom: var(--spacing-xl);">
-                    <strong>💡 Info Khusus Chef:</strong> Sesuai SOP terbaru, Anda tidak akan mendapatkan bonus dari penjualan. Fokuslah untuk menginput data **Masak** dan **Bertani** saja.
-                </div>
-            <?php elseif (in_array($selected_employee_role, ['karyawan', 'magang'])): ?>
-                <div class="info-message" style="margin-bottom: var(--spacing-xl);">
-                    <strong>💡 Info Khusus Karyawan/Magang:</strong> Sesuai SOP terbaru, Anda tidak perlu mengisi data masak. Fokuslah untuk menginput data **Penjualan** dengan target yang sudah ditentukan.
-                </div>
-            <?php endif; ?>
-
             <div class="card full-width" style="margin-bottom: var(--spacing-xl);">
                 <div class="card-header">
-                    <h3>Ringkasan Input <?= ($is_admin_or_manager && $employee_id_to_submit !== $user['id']) ? 'untuk ' . $selected_employee_name : '' ?></h3>
+                    <h3>Ringkasan Input Penjualan</h3>
                     <span class="entry-count">
-                        <?= $overall_sales_summary['total_paket_makan_minum_warga'] + $overall_sales_summary['total_paket_makan_minum_instansi'] + $overall_sales_summary['total_paket_snack'] + $overall_sales_summary['total_masak_paket'] + $overall_sales_summary['total_masak_snack'] ?> Total Paket
+                        <?= $total_overall_sales ?? 0 ?> Total Paket
                     </span>
                 </div>
                 <div class="card-content">
                     <div class="stats-grid-small">
                         <div class="stat-item">
-                            <span class="stat-label">P. M&M Warga</span>
-                            <span class="stat-value" style="font-size: 1.2em;"><?= $overall_sales_summary['total_paket_makan_minum_warga'] ?? 0 ?></span>
+                            <span class="stat-label">SAKE</span>
+                            <span class="stat-value" style="font-size: 1.2em;"><?= $overall_sales_summary['paket_sake'] ?? 0 ?></span>
                         </div>
                         <div class="stat-item">
-                            <span class="stat-label">P. M&M Instansi</span>
-                            <span class="stat-value" style="font-size: 1.2em;"><?= $overall_sales_summary['total_paket_makan_minum_instansi'] ?? 0 ?></span>
+                            <span class="stat-label">ANGGUR MERAH</span>
+                            <span class="stat-value" style="font-size: 1.2em;"><?= $overall_sales_summary['paket_anggur_merah'] ?? 0 ?></span>
                         </div>
                         <div class="stat-item">
-                            <span class="stat-label">Paket Snack</span>
-                            <span class="stat-value" style="font-size: 1.2em;"><?= $overall_sales_summary['total_paket_snack'] ?? 0 ?></span>
+                            <span class="stat-label">TUAK</span>
+                            <span class="stat-value" style="font-size: 1.2em;"><?= $overall_sales_summary['paket_tuak'] ?? 0 ?></span>
                         </div>
                         <div class="stat-item">
-                            <span class="stat-label">Masak Paket</span>
-                            <span class="stat-value" style="font-size: 1.2em;"><?= $overall_sales_summary['total_masak_paket'] ?? 0 ?></span>
+                            <span class="stat-label">SOJU</span>
+                            <span class="stat-value" style="font-size: 1.2em;"><?= $overall_sales_summary['paket_soju'] ?? 0 ?></span>
+                        </div>
+                        <?php if ($is_director_level): ?>
+                        <div class="stat-item">
+                            <span class="stat-label">SPICY 1</span>
+                            <span class="stat-value" style="font-size: 1.2em;"><?= $overall_sales_summary['paket_spicy_1'] ?? 0 ?></span>
                         </div>
                         <div class="stat-item">
-                            <span class="stat-label">Masak Snack</span>
-                            <span class="stat-value" style="font-size: 1.2em;"><?= $overall_sales_summary['total_masak_snack'] ?? 0 ?></span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-
-            <?php if (!empty($today_data) || $daily_total['total_entries'] > 0): ?>
-            <div class="summary-card">
-                <div class="summary-icon" style="color: var(--info-color);">📊</div>
-                <div class="summary-content">
-                    <h4>Ringkasan Hari Ini (<?= date('d/m/Y') ?>)</h4>
-                    <p class="summary-value"><?= $daily_total['total_entries'] ?> Input Hari Ini</p>
-                    <div class="stats-grid-small" style="margin-top: var(--spacing-md);">
-                        <div class="stat-item">
-                            <span class="stat-label">P. M&M Warga</span>
-                            <span class="stat-value" style="font-size: 1.2em;"><?= $daily_total['paket_makan_minum_warga'] ?></span>
+                            <span class="stat-label">SPICY 2</span>
+                            <span class="stat-value" style="font-size: 1.2em;"><?= $overall_sales_summary['paket_spicy_2'] ?? 0 ?></span>
                         </div>
                         <div class="stat-item">
-                            <span class="stat-label">P. M&M Instansi</span>
-                            <span class="stat-value" style="font-size: 1.2em;"><?= $daily_total['paket_makan_minum_instansi'] ?></span>
+                            <span class="stat-label">SPICY 3</span>
+                            <span class="stat-value" style="font-size: 1.2em;"><?= $overall_sales_summary['paket_spicy_3'] ?? 0 ?></span>
                         </div>
-                        <div class="stat-item">
-                            <span class="stat-label">Paket Snack</span>
-                            <span class="stat-value" style="font-size: 1.2em;"><?= $daily_total['paket_snack'] ?></span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-label">Masak Paket</span>
-                            <span class="stat-value" style="font-size: 1.2em;"><?= $daily_total['masak_paket'] ?></span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-label">Masak Snack</span>
-                            <span class="stat-value" style="font-size: 1.2em;"><?= $daily_total['masak_snack'] ?></span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <?php endif; ?>
-
-            <div class="content-grid">
-                <div class="card full-width"> <?php // Ubah menjadi full-width ?>
-                    <div class="card-header">
-                        <h3>Input Data Penjualan</h3>
-                        <div class="current-time">
-                            <span class="time-icon">🕐</span>
-                            <span id="current-time"><?= date('H:i:s') ?></span>
-                        </div>
-                    </div>
-                    <div class="card-content">
-                        <div class="info-message">
-                            <strong>💡 Info:</strong> Anda bisa memasukkan data penjualan beberapa kali. Setiap entri akan dicatat dengan waktu saat ini.
-                        </div>
-                        
-                        <form method="POST" class="sales-form" id="sales-form">
-                            <input type="hidden" name="action" value="update_sales">
-                            <input type="hidden" id="employee_role" value="<?= htmlspecialchars($selected_employee_role) ?>">
-                            
-                            <?php if ($is_admin_or_manager): ?>
-                            <div class="form-group">
-                                <label for="employee_id_input">Untuk Anggota</label>
-                                <select name="employee_id" id="employee_id_input" class="form-select" onchange="window.location.href='sales.php?employee_id=' + this.value">
-                                    <option value="<?= $user['id'] ?>" <?= ($employee_id_to_submit == $user['id']) ? 'selected' : '' ?>>-- Untuk Diri Sendiri --</option>
-                                    <?php foreach ($all_employees as $emp): ?>
-                                        <option value="<?= $emp['id'] ?>" <?= ($employee_id_to_submit == $emp['id']) ? 'selected' : '' ?>>
-                                            <?= htmlspecialchars($emp['name']) ?> (<?= getRoleDisplayName($emp['role']) ?>)
-                                        </option>
-                                    <?php endforeach; ?>
-                                </select>
-                            </div>
-                            <?php else: ?>
-                                <input type="hidden" name="employee_id" value="<?= $user['id'] ?>">
-                            <?php endif; ?>
-                            
-                            <div class="form-group"> <label for="date">Tanggal Penjualan</label>
-                                <input type="date" 
-                                        name="date" 
-                                        id="date" 
-                                        value="<?= htmlspecialchars(date('Y-m-d')) ?>" 
-                                        class="form-input" 
-                                        required
-                                        max="<?= date('Y-m-d') ?>"
-                                        min="<?= date('Y-m-d', strtotime('-30 days')) ?>"
-                                        onchange="formatDateInput(this)"> <small class="form-help">
-                                    Pilih tanggal penjualan (maksimal 30 hari ke belakang).
-                                    <br>Data akan disimpan pada jam: <strong id="preview-time"><?= date('H:i:s') ?></strong>
-                                </small>
-                            </div>
-                            
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="paket_makan_minum_warga">Jumlah Paket Makan & Minum Warga</label>
-                                    <input type="number" 
-                                            name="paket_makan_minum_warga" 
-                                            id="paket_makan_minum_warga" 
-                                            value="0" 
-                                            min="0" 
-                                            max="999"
-                                            class="form-input">
-                                    <small class="form-help">Per paket Rp 25.000</small>
-                                </div>
-                                <div class="form-group">
-                                    <label for="paket_makan_minum_instansi">Jumlah Paket Makan & Minum Instansi</label>
-                                    <input type="number" 
-                                            name="paket_makan_minum_instansi" 
-                                            id="paket_makan_minum_instansi" 
-                                            value="0" 
-                                            min="0" 
-                                            max="999"
-                                            class="form-input">
-                                    <small class="form-help">Minimal 15 paket, per paket Rp 18.000</small>
-                                </div>
-                            </div>
-                            
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="paket_snack">Jumlah Paket Snack</label>
-                                    <input type="number" 
-                                            name="paket_snack" 
-                                            id="paket_snack" 
-                                            value="0" 
-                                            min="0" 
-                                            max="999"
-                                            class="form-input">
-                                    <small class="form-help">Per paket Rp 15.000</small>
-                                </div>
-                                <div class="form-group">
-                                    <label for="masak_paket">Jumlah Masak Paket</label>
-                                    <input type="number" 
-                                            name="masak_paket" 
-                                            id="masak_paket" 
-                                            value="0" 
-                                            min="0" 
-                                            max="999"
-                                            class="form-input">
-                                </div>
-                            </div>
-                            
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="masak_snack">Jumlah Masak Snack</label>
-                                    <input type="number" 
-                                            name="masak_snack" 
-                                            id="masak_snack" 
-                                            value="0" 
-                                            min="0" 
-                                            max="999"
-                                            class="form-input">
-                                </div>
-                            </div>
-                            
-                            <div class="form-actions">
-                                <button type="button" class="btn btn-secondary" onclick="resetForm()">
-                                    <span class="btn-icon">🔄</span>
-                                    Reset Form
-                                </button>
-                                <button type="submit" class="btn btn-primary" id="submit-btn">
-                                    <span class="btn-icon">💾</span>
-                                    Simpan Data (<?= date('H:i') ?>)
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-
-                <?php // Pindahkan Riwayat Penjualan Terbaru di sini ?>
-                <div class="card full-width">
-                    <div class="card-header">
-                        <h3>Riwayat Penjualan Terbaru <?= ($is_admin_or_manager && $employee_id_to_submit !== $user['id']) ? 'untuk ' . $selected_employee_name : '' ?></h3>
-                        <span class="entry-count">20 Terakhir</span>
-                    </div>
-                    <div class="card-content">
-                        <?php if (empty($recent_sales)): ?>
-                            <div class="no-data">Belum ada data penjualan. Silakan input data pertama Anda!</div>
-                        <?php else: ?>
-                            <div class="responsive-table-container">
-                                <table class="activities-table-improved"> <thead>
-                                        <tr>
-                                            <th>Tanggal & Waktu</th>
-                                            <th>P. M&M Warga</th>
-                                            <th>P. M&M Instansi</th>
-                                            <th>Paket Snack</th>
-                                            <th>Masak Paket</th>
-                                            <th>Masak Snack</th>
-                                            <th>Total Paket</th>
-                                            <th>Aksi</th> </tr>
-                                    </thead>
-                                    <tbody>
-                                        <?php foreach ($recent_sales as $sale): ?>
-                                        <?php 
-                                            $total_paket_overall = $sale['paket_makan_minum_warga'] + $sale['paket_makan_minum_instansi'] + $sale['paket_snack'] + $sale['masak_paket'] + $sale['masak_snack'];
-                                            $is_today = date('Y-m-d', strtotime($sale['date'])) === date('Y-m-d');
-                                        ?>
-                                        <tr class="<?= $is_today ? 'today-row' : '' ?>">
-                                            <td data-label="Tanggal & Waktu">
-                                                <div class="datetime-cell">
-                                                    <?= date('d/m/Y H:i:s', strtotime($sale['input_time'])) ?>
-                                                    <?php if ($is_today): ?>
-                                                        <span class="today-badge">Hari Ini</span>
-                                                    <?php endif; ?>
-                                                </div>
-                                            </td>
-                                            <td data-label="P. M&M Warga"><?= $sale['paket_makan_minum_warga'] ?></td>
-                                            <td data-label="P. M&M Instansi"><?= $sale['paket_makan_minum_instansi'] ?></td>
-                                            <td data-label="Paket Snack"><?= $sale['paket_snack'] ?></td>
-                                            <td data-label="Masak Paket"><?= $sale['masak_paket'] ?></td>
-                                            <td data-label="Masak Snack"><?= $sale['masak_snack'] ?></td>
-                                            <td data-label="Total Paket">
-                                                <strong><?= $total_paket_overall ?></strong>
-                                            </td>
-                                            <td data-label="Aksi">
-                                                <form method="POST" onsubmit="return confirm('Yakin ingin menghapus entri penjualan ini? Aksi ini TIDAK DAPAT DIBATALKAN.')">
-                                                    <input type="hidden" name="action" value="delete_sales_entry">
-                                                    <input type="hidden" name="sales_entry_id" value="<?= $sale['id'] ?>">
-                                                    <button type="submit" class="btn btn-danger btn-sm">Hapus</button>
-                                                </form>
-                                            </td>
-                                        </tr>
-                                        <?php endforeach; ?>
-                                    </tbody>
-                                </table>
-                            </div>
                         <?php endif; ?>
                     </div>
+                </div>
+            </div>
+
+            <div class="card full-width">
+                <div class="card-header">
+                    <h3>Input Data Penjualan</h3>
+                    <div class="current-time">
+                        <span class="time-icon">🕐</span>
+                        <span id="current-time"><?= date('H:i:s') ?></span>
+                    </div>
+                </div>
+                <div class="card-content">
+                    <form method="POST" class="sales-form" id="sales-form">
+                        <input type="hidden" name="action" value="update_sales">
+                        <input type="hidden" id="employee_role" value="<?= htmlspecialchars($selected_employee_role) ?>">
+                        
+                        <?php if ($is_admin_or_manager): ?>
+                        <div class="form-group">
+                            <label for="employee_id_input">Untuk Anggota</label>
+                            <select name="employee_id" id="employee_id_input" class="form-select" onchange="window.location.href='sales.php?employee_id=' + this.value">
+                                <option value="<?= $user['id'] ?>" <?= ($employee_id_to_submit == $user['id']) ? 'selected' : '' ?>>-- Untuk Diri Sendiri --</option>
+                                <?php foreach ($all_employees as $emp): ?>
+                                    <option value="<?= $emp['id'] ?>" <?= ($employee_id_to_submit == $emp['id']) ? 'selected' : '' ?>>
+                                        <?= htmlspecialchars($emp['name']) ?> (<?= getRoleDisplayName($emp['role']) ?>)
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <?php else: ?>
+                            <input type="hidden" name="employee_id" value="<?= $user['id'] ?>">
+                        <?php endif; ?>
+                        
+                        <div class="form-group"> <label for="date">Tanggal Penjualan</label>
+                            <input type="date" 
+                                    name="date" 
+                                    id="date" 
+                                    value="<?= htmlspecialchars(date('Y-m-d')) ?>" 
+                                    class="form-input" 
+                                    required
+                                    max="<?= date('Y-m-d') ?>"
+                                    min="<?= date('Y-m-d', strtotime('-30 days')) ?>"
+                                    onchange="formatDateInput(this)">
+                            <small class="form-help">
+                                Pilih tanggal penjualan (maksimal 30 hari ke belakang).
+                                <br>Data akan disimpan pada jam: <strong id="preview-time"><?= date('H:i:s') ?></strong>
+                            </small>
+                        </div>
+                        
+                        <div class="sales-input-grid">
+                            <div class="product-card">
+                                <label for="paket_sake">SAKE</label>
+                                <p>$20,000.00</p>
+                                <div class="quantity-group">
+                                    <label for="paket_sake">Quantity</label>
+                                    <input type="number" name="paket_sake" id="paket_sake" value="0" min="0">
+                                </div>
+                            </div>
+                            <div class="product-card">
+                                <label for="paket_anggur_merah">ANGGUR MERAH</label>
+                                <p>$20,000.00</p>
+                                <div class="quantity-group">
+                                    <label for="paket_anggur_merah">Quantity</label>
+                                    <input type="number" name="paket_anggur_merah" id="paket_anggur_merah" value="0" min="0">
+                                </div>
+                            </div>
+                            <div class="product-card">
+                                <label for="paket_tuak">TUAK</label>
+                                <p>$20,000.00</p>
+                                <div class="quantity-group">
+                                    <label for="paket_tuak">Quantity</label>
+                                    <input type="number" name="paket_tuak" id="paket_tuak" value="0" min="0">
+                                </div>
+                            </div>
+                            <div class="product-card">
+                                <label for="paket_soju">SOJU</label>
+                                <p>$20,000.00</p>
+                                <div class="quantity-group">
+                                    <label for="paket_soju">Quantity</label>
+                                    <input type="number" name="paket_soju" id="paket_soju" value="0" min="0">
+                                </div>
+                            </div>
+                            
+                            <?php if ($is_director_level): ?>
+                            <div class="product-card product-card-spicy">
+                                <label for="paket_spicy_1">SPICY 1</label>
+                                <p>$65,000.00</p>
+                                <div class="quantity-group">
+                                    <label for="paket_spicy_1">Quantity</label>
+                                    <input type="number" name="paket_spicy_1" id="paket_spicy_1" value="0" min="0">
+                                </div>
+                            </div>
+                            <div class="product-card product-card-spicy">
+                                <label for="paket_spicy_2">SPICY 2</label>
+                                <p>$45,000.00</p>
+                                <div class="quantity-group">
+                                    <label for="paket_spicy_2">Quantity</label>
+                                    <input type="number" name="paket_spicy_2" id="paket_spicy_2" value="0" min="0">
+                                </div>
+                            </div>
+                            <div class="product-card product-card-spicy">
+                                <label for="paket_spicy_3">SPICY 3</label>
+                                <p>$35,000.00</p>
+                                <div class="quantity-group">
+                                    <label for="paket_spicy_3">Quantity</label>
+                                    <input type="number" name="paket_spicy_3" id="paket_spicy_3" value="0" min="0">
+                                </div>
+                            </div>
+                            <?php endif; ?>
+                        </div>
+                        
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary" id="submit-btn">
+                                <span class="btn-icon">💾</span>
+                                Simpan Data
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <div class="card full-width">
+                <div class="card-header">
+                    <h3>Riwayat Penjualan Terbaru</h3>
+                    <span class="entry-count">20 Terakhir</span>
+                </div>
+                <div class="card-content">
+                    <?php if (empty($recent_sales)): ?>
+                        <div class="no-data">Belum ada data penjualan. Silakan input data pertama Anda!</div>
+                    <?php else: ?>
+                        <div class="responsive-table-container">
+                            <table class="activities-table-improved"> 
+                                <thead>
+                                    <tr>
+                                        <th>Tanggal & Waktu</th>
+                                        <th>Sake</th>
+                                        <th>Anggur Merah</th>
+                                        <th>Tuak</th>
+                                        <th>Soju</th>
+                                        <th>Spicy 1</th>
+                                        <th>Spicy 2</th>
+                                        <th>Spicy 3</th>
+                                        <th>Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($recent_sales as $sale): ?>
+                                    <?php 
+                                        $is_today = date('Y-m-d', strtotime($sale['date'])) === date('Y-m-d');
+                                    ?>
+                                    <tr class="<?= $is_today ? 'today-row' : '' ?>">
+                                        <td data-label="Tanggal & Waktu">
+                                            <div class="datetime-cell">
+                                                <?= date('d/m/Y H:i:s', strtotime($sale['input_time'])) ?>
+                                                <?php if ($is_today): ?>
+                                                    <span class="today-badge">Hari Ini</span>
+                                                <?php endif; ?>
+                                            </div>
+                                        </td>
+                                        <td data-label="Sake"><?= $sale['paket_sake'] ?></td>
+                                        <td data-label="Anggur Merah"><?= $sale['paket_anggur_merah'] ?></td>
+                                        <td data-label="Tuak"><?= $sale['paket_tuak'] ?></td>
+                                        <td data-label="Soju"><?= $sale['paket_soju'] ?></td>
+                                        <td data-label="Spicy 1"><?= $sale['paket_spicy_1'] ?></td>
+                                        <td data-label="Spicy 2"><?= $sale['paket_spicy_2'] ?></td>
+                                        <td data-label="Spicy 3"><?= $sale['paket_spicy_3'] ?></td>
+                                        <td data-label="Aksi">
+                                            <form method="POST" onsubmit="return confirm('Yakin ingin menghapus entri penjualan ini? Aksi ini TIDAK DAPAT DIBATALKAN.')">
+                                                <input type="hidden" name="action" value="delete_sales_entry">
+                                                <input type="hidden" name="sales_entry_id" value="<?= $sale['id'] ?>">
+                                                <button type="submit" class="btn btn-danger btn-sm">Hapus</button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    <?php endif; ?>
                 </div>
             </div>
         </main>
@@ -659,136 +665,6 @@ $stmt->close();
                 submitBtn.innerHTML = `<span class="btn-icon">💾</span> Simpan Data (${shortTime})`;
             }
         }
-
-        // Fungsi untuk menormalisasi input tanggal ke YYYY-MM-DD
-        function formatDateInput(inputElement) {
-            try {
-                const dateValue = inputElement.value;
-                if (dateValue) {
-                    let date = null;
-
-                    // Coba parse sebagai YYYY-MM-DD
-                    let parsedYMD = new Date(dateValue + 'T00:00:00'); // Tambahkan T00:00:00 untuk hindari masalah zona waktu
-                    // Periksa apakah parsedYMD valid dan string aslinya cocok dengan format YYYY-MM-DD
-                    if (!isNaN(parsedYMD.getTime()) && parsedYMD.toISOString().slice(0,10) === dateValue) {
-                        date = parsedYMD;
-                    }
-                    
-                    // Jika YYYY-MM-DD gagal, coba parse sebagai DD/MM/YYYY
-                    if (!date) {
-                        const parts = dateValue.split('/');
-                        if (parts.length === 3) {
-                            const day = parseInt(parts[0], 10);
-                            const month = parseInt(parts[1], 10);
-                            const year = parseInt(parts[2], 10);
-                            // Periksa validitas angka dan buat objek Date (Month - 1 karena 0-indexed)
-                            // Lakukan pengecekan validitas tanggal seperti 31 Feb tidak valid
-                            if (day >=1 && day <=31 && month >=1 && month <=12 && year >= 1900) {
-                                let tempDate = new Date(year, month - 1, day);
-                                if (!isNaN(tempDate.getTime()) && tempDate.getDate() === day && (tempDate.getMonth() + 1) === month) {
-                                    date = tempDate;
-                                }
-                            }
-                        }
-                    }
-
-                    // Jika objek Date valid, format ke YYYY-MM-DD
-                    if (date) {
-                        const year = date.getFullYear();
-                        const month = String(date.getMonth() + 1).padStart(2, '0');
-                        const day = String(date.getDate()).padStart(2, '0');
-                        inputElement.value = `${year}-${month}-${day}`;
-                    } else {
-                        // Jika tidak bisa dinormalisasi, mungkin clear input agar pengguna memasukkan ulang
-                        // Atau biarkan saja untuk memicu validasi sisi server
-                        // inputElement.value = ''; // Opsional: hapus nilai input yang tidak valid
-                    }
-                }
-            } catch (e) {
-                console.error("Error normalizing date input:", e);
-            }
-        }
-
-
-        // Enhanced form validation for sales data
-        function validateSalesForm() {
-            const form = document.getElementById('sales-form');
-            const dateInput = document.getElementById('date');
-            const paketMakanMinumInstansiInput = document.getElementById('paket_makan_minum_instansi');
-            
-            // Peran pengguna yang sedang menginput data
-            const employeeRole = document.getElementById('employee_role').value;
-            
-            // Ambil nilai dari input penjualan dan masak
-            const salesInput = parseInt(document.getElementById('paket_makan_minum_warga').value) +
-                             parseInt(document.getElementById('paket_makan_minum_instansi').value) +
-                             parseInt(document.getElementById('paket_snack').value);
-
-            const masakInput = parseInt(document.getElementById('masak_paket').value) +
-                              parseInt(document.getElementById('masak_snack').value);
-
-            // Cek jika chef mengisi kolom penjualan
-            if (employeeRole === 'chef' && salesInput > 0) {
-                const confirmation = confirm("Anda adalah seorang Chef. Sesuai SOP, Anda tidak mendapatkan bonus dari penjualan. Apakah Anda yakin ingin menginput data penjualan?");
-                if (!confirmation) {
-                    return false;
-                }
-            }
-
-            // Cek jika karyawan/magang mengisi kolom masak
-            if (['karyawan', 'magang'].includes(employeeRole) && masakInput > 0) {
-                const confirmation = confirm("Anda adalah seorang Karyawan/Magang. Sesuai SOP, Anda tidak perlu mengisi data masak. Apakah Anda yakin ingin menginput data masak?");
-                if (!confirmation) {
-                    return false;
-                }
-            }
-            
-            if (!dateInput.value) {
-                showNotification('Tanggal harus diisi!', 'error');
-                return false;
-            }
-
-            const selectedDate = new Date(dateInput.value);
-            const today = new Date();
-            today.setHours(23, 59, 59, 999); 
-            
-            if (selectedDate > today) {
-                showNotification('Tanggal tidak boleh di masa depan!', 'error');
-                return false;
-            }
-            
-            const thirtyDaysAgo = new Date();
-            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-            thirtyDaysAgo.setHours(0, 0, 0, 0); 
-            
-            if (selectedDate < thirtyDaysAgo) {
-                showNotification('Tanggal tidak boleh lebih dari 30 hari yang lalu!', 'error');
-                return false;
-            }
-
-            // Validasi minimal pembelian Paket Makan Minum Instansi
-            const instansiValue = parseInt(paketMakanMinumInstansiInput.value);
-            if (instansiValue > 0 && instansiValue < 15) {
-                showNotification('Paket Makan Minum Instansi minimal 15 paket!', 'error');
-                return false;
-            }
-            
-            return true;
-        }
-        
-        function resetForm() {
-            const form = document.getElementById('sales-form');
-            const today = new Date().toISOString().split('T')[0];
-            
-            document.getElementById('date').value = today;
-            
-            const numberInputs = form.querySelectorAll('input[type="number"]');
-            numberInputs.forEach(input => {
-                input.value = 0;
-            });
-            
-            showNotification('Form telah direset!', 'info');
-        }
         
         document.addEventListener('DOMContentLoaded', function() {
             const form = document.getElementById('sales-form');
@@ -797,18 +673,8 @@ $stmt->close();
             setInterval(updateCurrentTime, 1000);
             
             form.addEventListener('submit', function(e) {
-                // Pastikan input tanggal sudah dinormalisasi sebelum validasi dan submit
-                // Panggil formatDateInput secara eksplisit pada saat submit
-                formatDateInput(document.getElementById('date')); 
-
-                if (!validateSalesForm()) {
-                    e.preventDefault();
-                    return false;
-                }
-                
                 const submitBtn = document.getElementById('submit-btn');
-                // showLoading(submitBtn); // Aktifkan jika Anda ingin efek loading
-
+                
                 const now = new Date();
                 const timeString = now.toLocaleTimeString('id-ID', { 
                     hour12: false,
@@ -819,25 +685,8 @@ $stmt->close();
                 
                 if (!confirm(`Yakin ingin menyimpan data penjualan pada jam ${timeString}?`)) {
                     e.preventDefault();
-                    // hideLoading(submitBtn); // Sembunyikan loading jika dibatalkan
                     return false;
                 }
-            });
-            
-            const dateInput = document.getElementById('date');
-            dateInput.addEventListener('change', function() {
-                // Panggil normalisasi setiap kali nilai input tanggal berubah
-                formatDateInput(this); 
-                if (this.value && validateSalesForm()) {
-                    console.log('Date changed to:', this.value);
-                }
-            });
-            
-            // Add animation to today's entries (using the new activity-item class)
-            const todayEntries = document.querySelectorAll('.activity-item');
-            todayEntries.forEach((entry, index) => {
-                entry.style.animationDelay = `${index * 0.1}s`;
-                entry.classList.add('fade-in');
             });
         });
 

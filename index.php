@@ -59,7 +59,7 @@ if ($status_is_open) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - Galaxy Night Club Management System</title>
+    <title>Login - Elysium Night Club Management System</title>
     <link rel="icon" href="LOGO_WOT.png" type="image/png">
     <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
     <link rel="stylesheet" href="style.css">
@@ -247,7 +247,7 @@ if ($status_is_open) {
                 <div class="logo-large">
                     <div class="logo-icon-large">✨</div>
                     <div class="logo-text-large">
-                        <h1>Galaxy Night Club By Taka Group</h1>
+                        <h1>Elysium Night Club By Taka Group</h1>
                         <p>Management System</p>
                     </div>
                 </div>
@@ -261,7 +261,7 @@ if ($status_is_open) {
                         <span>👤</span>
                     </div>
                     <h2>Portal Login Karyawan</h2>
-                    <p>Masuk ke sistem manajemen Galaxy Night Club</p>
+                    <p>Masuk ke sistem manajemen Elysium Night Club</p>
                 </div>
                 
                 <form method="POST" class="login-form" id="loginForm">
@@ -380,7 +380,7 @@ if ($status_is_open) {
         </main>
 
         <footer class="login-footer">
-            <p>&copy; 2025 Galaxy Night Club Management System. All rights reserved.</p>
+            <p>&copy; 2025 Elysium Night Club Management System. All rights reserved.</p>
         </footer>
     </div>
 

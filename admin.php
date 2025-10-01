@@ -249,7 +249,7 @@ $stats['pending_requests'] = $conn->query("
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Panel - Warung Om Tante</title>
+    <title>Admin Panel - Elysium Night Club</title>
     <link rel="icon" href="LOGO_WOT.png" type="image/png">
     <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
     <link rel="stylesheet" href="style.css">
@@ -265,7 +265,7 @@ $stats['pending_requests'] = $conn->query("
                     <span class="page-icon">⚙️</span>
                     Admin Panel
                 </h1>
-                <p>Kelola sistem dan anggota Warung Om Tante</p>
+                <p>Kelola sistem dan anggota Elysium Night Club</p>
             </div>
 
             <?php if (isset($success)): ?>

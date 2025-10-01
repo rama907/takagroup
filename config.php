@@ -264,7 +264,7 @@ function sendDiscordNotification($data, $type = 'info') {
                 $embed['description'] = "Anggota baru **{$target_name}** ({$role_display}) telah ditambahkan oleh **{$admin_name}**.";
                 $embed['fields'] = [
                     ['name' => 'Nama Anggota', 'value' => $target_name, 'inline' => true],
-                    ['name' => 'Jabatan', 'value' => $role_display, 'inline' => true],
+                    ['name' => 'Jabatan', 'value' => getRoleDisplayName($requested_role), 'inline' => true],
                     ['name' => 'Ditambahkan Oleh', 'value' => $admin_name, 'inline' => true],
                 ];
             }
@@ -279,16 +279,17 @@ function sendDiscordNotification($data, $type = 'info') {
             }
             break;
 
-        case 'sale_input': // Data: ['employee_name', 'date', 'input_time', 'paket_makan_minum_warga', 'paket_makan_minum_instansi', 'paket_snack', 'masak_paket', 'masak_snack']
+        case 'sale_input': // Data: ['employee_name', 'date', 'input_time', 'paket_sake', 'paket_anggur_merah', 'paket_tuak', 'paket_soju', 'paket_spicy_1', 'paket_spicy_2', 'paket_spicy_3']
             $employee_name = htmlspecialchars($data['employee_name'] ?? 'N/A');
-            $paket_warga = $data['paket_makan_minum_warga'] ?? 0;
-            $paket_instansi = $data['paket_makan_minum_instansi'] ?? 0;
-            $paket_snack = $data['paket_snack'] ?? 0;
-            $masak_paket = $data['masak_paket'] ?? 0;
-            $masak_snack = $data['masak_snack'] ?? 0;
+            $sake = $data['paket_sake'] ?? 0;
+            $anggur_merah = $data['paket_anggur_merah'] ?? 0;
+            $tuak = $data['paket_tuak'] ?? 0;
+            $soju = $data['paket_soju'] ?? 0;
+            $spicy1 = $data['paket_spicy_1'] ?? 0;
+            $spicy2 = $data['paket_spicy_2'] ?? 0;
+            $spicy3 = $data['paket_spicy_3'] ?? 0;
             
-            $total_items_sold = $paket_warga + $paket_instansi + $paket_snack; // Total item penjualan saja
-            $total_items_cooked = $masak_paket + $masak_snack; // Total item masak saja
+            $total_items_sold = $sake + $anggur_merah + $tuak + $soju + $spicy1 + $spicy2 + $spicy3;
 
             $embed['title'] = "💰 Data Penjualan Baru Diinput!";
             $embed['description'] = "**{$employee_name}** telah menginput data penjualan.";
@@ -296,31 +297,32 @@ function sendDiscordNotification($data, $type = 'info') {
             $embed['fields'] = [
                 ['name' => 'Tanggal', 'value' => date('d/m/Y', strtotime($data['date'] ?? '')), 'inline' => true],
                 ['name' => 'Waktu Input', 'value' => date('H:i:s', strtotime($data['input_time'] ?? '')), 'inline' => true],
-                ['name' => 'P. M&M Warga', 'value' => $paket_warga, 'inline' => true],
-                ['name' => 'P. M&M Instansi', 'value' => $paket_instansi, 'inline' => true],
-                ['name' => 'Paket Snack', 'value' => $paket_snack, 'inline' => true],
             ];
-            if ($masak_paket > 0 || $masak_snack > 0) { // Tambahkan field masak hanya jika ada
-                $embed['fields'][] = ['name' => 'Masak Paket', 'value' => $masak_paket, 'inline' => true];
-                $embed['fields'][] = ['name' => 'Masak Snack', 'value' => $masak_snack, 'inline' => true];
-            }
-            $embed['fields'][] = ['name' => 'Total Paket Terjual', 'value' => $total_items_sold, 'inline' => true];
-            if ($total_items_cooked > 0) {
-                $embed['fields'][] = ['name' => 'Total Masak', 'value' => $total_items_cooked, 'inline' => true];
-            }
+
+            if ($sake > 0) $embed['fields'][] = ['name' => 'Sake', 'value' => $sake, 'inline' => true];
+            if ($anggur_merah > 0) $embed['fields'][] = ['name' => 'Anggur Merah', 'value' => $anggur_merah, 'inline' => true];
+            if ($tuak > 0) $embed['fields'][] = ['name' => 'Tuak', 'value' => $tuak, 'inline' => true];
+            if ($soju > 0) $embed['fields'][] = ['name' => 'Soju', 'value' => $soju, 'inline' => true];
+            if ($spicy1 > 0) $embed['fields'][] = ['name' => 'Spicy 1', 'value' => $spicy1, 'inline' => true];
+            if ($spicy2 > 0) $embed['fields'][] = ['name' => 'Spicy 2', 'value' => $spicy2, 'inline' => true];
+            if ($spicy3 > 0) $embed['fields'][] = ['name' => 'Spicy 3', 'value' => $spicy3, 'inline' => true];
+            
+            $embed['fields'][] = ['name' => 'Total Item Terjual', 'value' => $total_items_sold, 'inline' => false];
             break;
         
-        case 'sale_deleted': // Tipe notifikasi baru untuk penghapusan penjualan
+        case 'sale_deleted': // Data: ['employee_name', 'sales_date_time', 'paket_sake', 'paket_anggur_merah', 'paket_tuak', 'paket_soju', 'paket_spicy_1', 'paket_spicy_2', 'paket_spicy_3']
             $employee_name = htmlspecialchars($data['employee_name'] ?? 'N/A');
             $sales_date_time = htmlspecialchars($data['sales_date_time'] ?? 'N/A');
-            $paket_warga = $data['paket_makan_minum_warga'] ?? 0;
-            $paket_instansi = $data['paket_makan_minum_instansi'] ?? 0;
-            $paket_snack = $data['paket_snack'] ?? 0;
-            $masak_paket = $data['masak_paket'] ?? 0;
-            $masak_snack = $data['masak_snack'] ?? 0;
             
-            $total_items_deleted_sold = $paket_warga + $paket_instansi + $paket_snack;
-            $total_items_deleted_cooked = $masak_paket + $masak_snack;
+            $sake = $data['paket_sake'] ?? 0;
+            $anggur_merah = $data['paket_anggur_merah'] ?? 0;
+            $tuak = $data['paket_tuak'] ?? 0;
+            $soju = $data['paket_soju'] ?? 0;
+            $spicy1 = $data['paket_spicy_1'] ?? 0;
+            $spicy2 = $data['paket_spicy_2'] ?? 0;
+            $spicy3 = $data['paket_spicy_3'] ?? 0;
+            
+            $total_items_deleted = $sake + $anggur_merah + $tuak + $soju + $spicy1 + $spicy2 + $spicy3;
 
             $embed['title'] = "🗑️ Data Penjualan Dihapus!";
             $embed['description'] = "Data penjualan dari **{$employee_name}** pada **{$sales_date_time}** telah dihapus.";
@@ -328,18 +330,17 @@ function sendDiscordNotification($data, $type = 'info') {
             $embed['fields'] = [
                 ['name' => 'Anggota', 'value' => $employee_name, 'inline' => true],
                 ['name' => 'Waktu Input Asli', 'value' => $sales_date_time, 'inline' => true],
-                ['name' => 'P. M&M Warga', 'value' => $paket_warga, 'inline' => true],
-                ['name' => 'P. M&M Instansi', 'value' => $paket_instansi, 'inline' => true],
-                ['name' => 'Paket Snack', 'value' => $paket_snack, 'inline' => true],
             ];
-            if ($masak_paket > 0 || $masak_snack > 0) { // Tambahkan field masak hanya jika ada
-                $embed['fields'][] = ['name' => 'Masak Paket', 'value' => $masak_paket, 'inline' => true];
-                $embed['fields'][] = ['name' => 'Masak Snack', 'value' => $masak_snack, 'inline' => true];
-            }
-            $embed['fields'][] = ['name' => 'Total Paket Dihapus', 'value' => $total_items_deleted_sold, 'inline' => true];
-            if ($total_items_deleted_cooked > 0) {
-                $embed['fields'][] = ['name' => 'Total Masak Dihapus', 'value' => $total_items_deleted_cooked, 'inline' => true];
-            }
+
+            if ($sake > 0) $embed['fields'][] = ['name' => 'Sake', 'value' => $sake, 'inline' => true];
+            if ($anggur_merah > 0) $embed['fields'][] = ['name' => 'Anggur Merah', 'value' => $anggur_merah, 'inline' => true];
+            if ($tuak > 0) $embed['fields'][] = ['name' => 'Tuak', 'value' => $tuak, 'inline' => true];
+            if ($soju > 0) $embed['fields'][] = ['name' => 'Soju', 'value' => $soju, 'inline' => true];
+            if ($spicy1 > 0) $embed['fields'][] = ['name' => 'Spicy 1', 'value' => $spicy1, 'inline' => true];
+            if ($spicy2 > 0) $embed['fields'][] = ['name' => 'Spicy 2', 'value' => $spicy2, 'inline' => true];
+            if ($spicy3 > 0) $embed['fields'][] = ['name' => 'Spicy 3', 'value' => $spicy3, 'inline' => true];
+
+            $embed['fields'][] = ['name' => 'Total Item Dihapus', 'value' => $total_items_deleted, 'inline' => false];
             break;
 
         case 'salary_paid_single':
@@ -462,6 +463,85 @@ function sendDiscordNotification($data, $type = 'info') {
             ];
             break;
 
+        case 'room_booking_submitted':
+            $room_id = htmlspecialchars($data['room_id'] ?? 'N/A');
+            $booking_name = htmlspecialchars($data['booking_name'] ?? 'N/A');
+            $booking_datetime = htmlspecialchars($data['booking_datetime'] ?? 'N/A');
+            $embed['title'] = "🛎️ Permintaan Booking Ruangan Baru!";
+            $embed['description'] = "Permintaan booking ruangan baru telah diajukan oleh **{$booking_name}**.";
+            $embed['color'] = $colors['info'];
+            $embed['fields'] = [
+                ['name' => 'Nama Pemesan', 'value' => $booking_name, 'inline' => true],
+                ['name' => 'ID Ruangan', 'value' => $room_id, 'inline' => true],
+                ['name' => 'Tanggal & Waktu', 'value' => date('d/m/Y H:i', strtotime($booking_datetime)), 'inline' => false],
+            ];
+            break;
+
+        case 'booking_status_updated':
+            $room_name = htmlspecialchars($data['room_name'] ?? 'N/A');
+            $booking_name = htmlspecialchars($data['booking_name'] ?? 'N/A');
+            $admin_name = htmlspecialchars($data['admin_name'] ?? 'N/A');
+            $action = htmlspecialchars($data['action'] ?? 'N/A');
+
+            $status_text = '';
+            $status_icon = '';
+            $color = $colors['info'];
+
+            if ($action === 'approve_booking') {
+                $status_text = 'disetujui';
+                $status_icon = '✅';
+                $color = $colors['success'];
+            } elseif ($action === 'decline_booking') {
+                $status_text = 'ditolak';
+                $status_icon = '❌';
+                $color = $colors['danger'];
+            } elseif ($action === 'mark_as_used') {
+                $status_text = 'selesai digunakan';
+                $status_icon = '✔️';
+                $color = $colors['info'];
+            }
+
+            $embed['title'] = "{$status_icon} Status Booking Diperbarui!";
+            $embed['description'] = "Booking ruangan **{$room_name}** dari **{$booking_name}** telah **{$status_text}** oleh **{$admin_name}**.";
+            $embed['color'] = $color;
+            $embed['fields'] = [
+                ['name' => 'Ruangan', 'value' => $room_name, 'inline' => true],
+                ['name' => 'Pemesan', 'value' => $booking_name, 'inline' => true],
+                ['name' => 'Diproses Oleh', 'value' => $admin_name, 'inline' => true],
+            ];
+            break;
+
+        case 'payment_status_updated':
+            $room_name = htmlspecialchars($data['room_name'] ?? 'N/A');
+            $booking_name = htmlspecialchars($data['booking_name'] ?? 'N/A');
+            $admin_name = htmlspecialchars($data['admin_name'] ?? 'N/A');
+            $action = htmlspecialchars($data['action'] ?? 'N/A');
+            
+            $status_text = '';
+            $status_icon = '';
+            $color = $colors['info'];
+            
+            if ($action === 'mark_dp_paid') {
+                $status_text = 'Pembayaran DP telah lunas';
+                $status_icon = '💰';
+                $color = $colors['warning'];
+            } elseif ($action === 'mark_full_paid') {
+                $status_text = 'Pembayaran penuh telah lunas';
+                $status_icon = '✅';
+                $color = $colors['success'];
+            }
+            
+            $embed['title'] = "{$status_icon} Status Pembayaran Booking Diperbarui!";
+            $embed['description'] = "Status pembayaran untuk booking ruangan **{$room_name}** dari **{$booking_name}** telah diperbarui menjadi **{$status_text}** oleh **{$admin_name}**.";
+            $embed['color'] = $color;
+            $embed['fields'] = [
+                ['name' => 'Ruangan', 'value' => $room_name, 'inline' => true],
+                ['name' => 'Pemesan', 'value' => $booking_name, 'inline' => true],
+                ['name' => 'Diproses Oleh', 'value' => $admin_name, 'inline' => true],
+                ['name' => 'Status Terbaru', 'value' => $status_text, 'inline' => false],
+            ];
+            break;
+
         default:
             // Fallback for unrecognized messages
             $embed['title'] = "ℹ️ Notifikasi Umum";
@@ -543,7 +623,7 @@ function getPendingRequestCount() {
         $count += $result['count'];
         $stmt->close();
     }
-
+    
     // Count pending room booking requests
     $stmt = $conn->prepare("SELECT COUNT(*) as count FROM room_bookings WHERE booking_status = 'pending_approval'");
     if ($stmt) {

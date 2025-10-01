@@ -141,7 +141,7 @@ if (isset($_GET['employee_id']) && !empty($_GET['employee_id'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Manajemen Surat Peringatan - Warung Om Tante</title>
+    <title>Manajemen Surat Peringatan - Elysium Night Club</title>
     <link rel="icon" href="LOGO_WOT.png" type="image/png">
     <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
     <link rel="stylesheet" href="style.css">

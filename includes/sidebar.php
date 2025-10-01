@@ -125,6 +125,14 @@ if (isset($conn) && isLoggedIn()) {
             <span class="nav-icon">💰</span>
             <span class="nav-text">Data Penjualan</span>
         </a>
+        <a href="refrigerator-stock.php" class="nav-item <?= basename($_SERVER['PHP_SELF']) == 'refrigerator-stock.php' ? 'active' : '' ?>">
+            <span class="nav-icon">🍷</span>
+            <span class="nav-text">Stok Kulkas</span>
+        </a>    
+        <a href="warehouse-stock.php" class="nav-item <?= basename($_SERVER['PHP_SELF']) == 'warehouse-stock.php' ? 'active' : '' ?>">
+            <span class="nav-icon">📦</span>
+            <span class="nav-text">Stok Gudang</span>
+        </a>     
         <a href="manual-duty.php" class="nav-item <?= basename($_SERVER['PHP_SELF']) == 'manual-duty.php' ? 'active' : '' ?>">
             <span class="nav-icon">⏱️</span>
             <span class="nav-text">Input Manual</span>
@@ -175,6 +183,10 @@ if (isset($conn) && isLoggedIn()) {
         
         <?php if (hasRole(['ceo', 'direktur', 'wakil_direktur', 'manager'])): ?>
         <div class="nav-divider"></div>
+        <a href="employee-report.php" class="nav-item <?= basename($_SERVER['PHP_SELF']) == 'employee-report.php' ? 'active' : '' ?>">
+            <span class="icon">🌎</span>
+            <span class="text">Laporan Karyawan</span>
+        </a>
         <a href="employees.php" class="nav-item <?= basename($_SERVER['PHP_SELF']) == 'employees.php' ? 'active' : '' ?>">
             <span class="nav-icon">👥</span>
             <span class="nav-text">Daftar Anggota</span>

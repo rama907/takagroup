@@ -92,7 +92,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 die("Fatal Error: Gagal menyiapkan query hapus log duty. MySQL Error: " . $conn->error); // Paksa berhenti dan tampilkan error
                 // --- AKHIR KODE DIAGNOSTIK SEMENTARA ---
             }
-            $stmt_delete->bind_param("ii", $duty_log_id, $employee_id_of_log); // Ini baris 167
+            $stmt_delete->bind_param("ii", $duty_log_id, $employee_id_of_log);
             
             if ($stmt_delete->execute() && $stmt_delete->affected_rows > 0) {
                 $conn->commit();
@@ -154,40 +154,40 @@ $stmt->close();
 
 // Ambil ringkasan data penjualan KESELURUHAN untuk pengguna
 $total_sales_summary = [
-    'total_paket_makan_minum_warga' => 0,
-    'total_paket_makan_minum_instansi' => 0,
-    'total_paket_snack' => 0,
-    'total_masak_paket' => 0,
-    'total_masak_snack' => 0,
+    'paket_sake' => 0,
+    'paket_anggur_merah' => 0,
+    'paket_tuak' => 0,
+    'paket_soju' => 0,
+    'paket_spicy_1' => 0,
+    'paket_spicy_2' => 0,
+    'paket_spicy_3' => 0,
     'total_penjualan' => 0, // Baru: total paket makan & minum + paket snack
     'total_masak_keseluruhan' => 0 // Baru: total masak paket + masak snack
 ];
 $stmt = $conn->prepare("
     SELECT
-        SUM(paket_makan_minum_warga) as total_paket_makan_minum_warga,
-        SUM(paket_makan_minum_instansi) as total_paket_makan_minum_instansi,
-        SUM(paket_snack) as total_paket_snack,
-        SUM(masak_paket) as total_masak_paket,
-        SUM(masak_snack) as total_masak_snack
+        SUM(paket_sake) as paket_sake,
+        SUM(paket_anggur_merah) as paket_anggur_merah,
+        SUM(paket_tuak) as paket_tuak,
+        SUM(paket_soju) as paket_soju,
+        SUM(paket_spicy_1) as paket_spicy_1,
+        SUM(paket_spicy_2) as paket_spicy_2,
+        SUM(paket_spicy_3) as paket_spicy_3
     FROM sales_data
     WHERE employee_id = ?
 ");
-$stmt->bind_param("i", $user['id']);
-$stmt->execute();
-$result_sales = $stmt->get_result()->fetch_assoc();
-if ($result_sales) {
-    $total_sales_summary = $result_sales;
-    // Hitung total_penjualan (paket makan & minum + paket snack)
-    $total_sales_summary['total_penjualan'] =
-        $result_sales['total_paket_makan_minum_warga'] +
-        $result_sales['total_paket_makan_minum_instansi'] +
-        $result_sales['total_paket_snack'];
-    // Hitung total_masak_keseluruhan (masak paket + masak snack)
-    $total_sales_summary['total_masak_keseluruhan'] =
-        $result_sales['total_masak_paket'] +
-        $result_sales['total_masak_snack'];
+
+if ($stmt) {
+    $stmt->bind_param("i", $user['id']);
+    $stmt->execute();
+    $result_sales = $stmt->get_result()->fetch_assoc();
+    if ($result_sales) {
+        $total_sales_summary = $result_sales;
+        $total_sales_summary['total_penjualan'] = array_sum($result_sales);
+    }
+    $stmt->close();
 }
-$stmt->close();
+
 
 ?>
 
@@ -196,7 +196,7 @@ $stmt->close();
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Aktivitas Saya - Warung Om Tante</title>
+    <title>Aktivitas Saya - Elysium Night Club</title>
     <link rel="icon" href="LOGO_WOT.png" type="image/png">
     <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
     <link rel="stylesheet" href="style.css">
@@ -239,27 +239,6 @@ $stmt->close();
                         <h4>Total Penjualan Keseluruhan</h4>
                         <p class="summary-value">
                             <?= $total_sales_summary['total_penjualan'] ?>
-                        </p>
-                    </div>
-                </div>
-                <div class="summary-card">
-                    <div class="summary-icon" style="color: var(--warning-color);">🍜</div> <div class="summary-content">
-                        <h4>Total Masak Keseluruhan</h4>
-                        <p class="summary-value">
-                            <?= $total_sales_summary['total_masak_keseluruhan'] ?>
-                        </p>
-                    </div>
-                </div>
-                <div class="summary-card">
-                    <div class="summary-icon" style="color: var(--success-color);">✅</div>
-                    <div class="summary-content">
-                        <h4>Detail Item Penjualan</h4>
-                        <p class="stat-breakdown" style="font-size: 0.9em;">
-                            <span>M&M Warga: <strong><?= $total_sales_summary['total_paket_makan_minum_warga'] ?></strong></span>
-                            <span>M&M Instansi: <strong><?= $total_sales_summary['total_paket_makan_minum_instansi'] ?></strong></span>
-                            <span>Snack: <strong><?= $total_sales_summary['total_paket_snack'] ?></strong></span>
-                            <span>Masak P: <strong><?= $total_sales_summary['total_masak_paket'] ?></strong></span>
-                            <span>Masak S: <strong><?= $total_sales_summary['total_masak_snack'] ?></strong></span>
                         </p>
                     </div>
                 </div>

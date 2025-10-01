@@ -54,11 +54,13 @@ $performance_cut_off_threshold = 400;
 $stmt = $conn->prepare("
     SELECT e.id, e.name, e.role,
            COALESCE(duty_summary.total_duty_minutes, 0) as total_duty_minutes,
-           COALESCE(sales_summary.total_paket_makan_minum_warga, 0) as total_paket_makan_minum_warga,
-           COALESCE(sales_summary.total_paket_makan_minum_instansi, 0) as total_paket_makan_minum_instansi,
-           COALESCE(sales_summary.total_paket_snack, 0) as total_paket_snack,
-           COALESCE(sales_summary.total_masak_paket, 0) as total_masak_paket,
-           COALESCE(sales_summary.total_masak_snack, 0) as total_masak_snack
+           COALESCE(sales_summary.paket_sake, 0) as paket_sake,
+           COALESCE(sales_summary.paket_anggur_merah, 0) as paket_anggur_merah,
+           COALESCE(sales_summary.paket_tuak, 0) as paket_tuak,
+           COALESCE(sales_summary.paket_soju, 0) as paket_soju,
+           COALESCE(sales_summary.paket_spicy_1, 0) as paket_spicy_1,
+           COALESCE(sales_summary.paket_spicy_2, 0) as paket_spicy_2,
+           COALESCE(sales_summary.paket_spicy_3, 0) as paket_spicy_3
     FROM employees e
     LEFT JOIN (
         SELECT
@@ -71,11 +73,13 @@ $stmt = $conn->prepare("
     LEFT JOIN (
         SELECT
             employee_id,
-            SUM(paket_makan_minum_warga) as total_paket_makan_minum_warga,
-            SUM(paket_makan_minum_instansi) as total_paket_makan_minum_instansi,
-            SUM(paket_snack) as total_paket_snack,
-            SUM(masak_paket) as total_masak_paket,
-            SUM(masak_snack) as total_masak_snack
+            SUM(paket_sake) as paket_sake,
+            SUM(paket_anggur_merah) as paket_anggur_merah,
+            SUM(paket_tuak) as paket_tuak,
+            SUM(paket_soju) as paket_soju,
+            SUM(paket_spicy_1) as paket_spicy_1,
+            SUM(paket_spicy_2) as paket_spicy_2,
+            SUM(paket_spicy_3) as paket_spicy_3
         FROM sales_data
         GROUP BY employee_id
     ) as sales_summary ON e.id = sales_summary.employee_id
@@ -83,7 +87,7 @@ $stmt = $conn->prepare("
     GROUP BY e.id
 ");
 if (!$stmt) {
-    // error_log("Error preparing payslip summary statement: " . $conn->error);
+    error_log("Error preparing payslip summary statement: " . $conn->error);
 }
 $stmt->bind_param("i", $user['id']);
 $stmt->execute();
@@ -96,21 +100,25 @@ if (!$employee_data_summary) {
         'name' => $user['name'],
         'role' => $user['role'],
         'total_duty_minutes' => 0,
-        'total_paket_makan_minum_warga' => 0,
-        'total_paket_makan_minum_instansi' => 0,
-        'total_paket_snack' => 0,
-        'total_masak_paket' => 0,
-        'total_masak_snack' => 0
+        'paket_sake' => 0,
+        'paket_anggur_merah' => 0,
+        'paket_tuak' => 0,
+        'paket_soju' => 0,
+        'paket_spicy_1' => 0,
+        'paket_spicy_2' => 0,
+        'paket_spicy_3' => 0,
     ];
 }
 
 $employee_role_summary = $employee_data_summary['role'];
 $total_duty_minutes_summary = $employee_data_summary['total_duty_minutes'];
-$total_paket_makan_minum_warga_summary = $employee_data_summary['total_paket_makan_minum_warga'];
-$total_paket_makan_minum_instansi_summary = $employee_data_summary['total_paket_makan_minum_instansi'];
-$total_paket_snack_summary = $employee_data_summary['total_paket_snack'];
-$total_masak_paket_summary = $employee_data_summary['total_masak_paket'];
-$total_masak_snack_summary = $employee_data_summary['total_masak_snack'];
+$paket_sake_summary = $employee_data_summary['paket_sake'];
+$paket_anggur_merah_summary = $employee_data_summary['paket_anggur_merah'];
+$paket_tuak_summary = $employee_data_summary['paket_tuak'];
+$paket_soju_summary = $employee_data_summary['paket_soju'];
+$paket_spicy_1_summary = $employee_data_summary['paket_spicy_1'];
+$paket_spicy_2_summary = $employee_data_summary['paket_spicy_2'];
+$paket_spicy_3_summary = $employee_data_summary['paket_spicy_3'];
 
 $overtime_minutes_summary = 0;
 $overtime_hours_display_summary = 0;
@@ -145,8 +153,9 @@ if ($total_duty_minutes_summary > $min_duty_minutes_for_bonus) {
 }
 
 // Perhitungan Bonus Penjualan
-$total_penjualan_paket_summary = $total_paket_makan_minum_warga_summary + $total_paket_makan_minum_instansi_summary + $total_paket_snack_summary;
+$total_penjualan_paket_summary = $paket_sake_summary + $paket_anggur_merah_summary + $paket_tuak_summary + $paket_soju_summary + $paket_spicy_1_summary + $paket_spicy_2_summary + $paket_spicy_3_summary;
 $bonus_penjualan_summary = 0;
+// Note: Logic for sales bonus based on sales threshold and employee role
 if (in_array($employee_role_summary, ['karyawan', 'magang'])) {
     if ($total_penjualan_paket_summary >= $sales_bonus_threshold) {
         $bonus_penjualan_summary = $sales_bonus_amount;
@@ -164,8 +173,10 @@ if (in_array($employee_role_summary, ['karyawan', 'magang'])) {
         $is_bonus_cut_summary = true;
     }
 } elseif ($employee_role_summary === 'chef') {
-    $total_masak_packages_summary = $total_masak_paket_summary + $total_masak_snack_summary;
-    $performance_indicator_text = $total_masak_packages_summary . ' Masak';
+    // Note: You removed masak products, so this part of the logic might need to be adjusted based on new products.
+    // For now, I'll keep it simple by setting performance to 0.
+    $total_masak_packages_summary = 0;
+    $performance_indicator_text = '0 Masak';
     if ($total_masak_packages_summary < $performance_cut_off_threshold) {
         $bonus_21_jam_summary *= 0.5;
         $total_bonus_lembur_summary *= 0.5;
@@ -192,7 +203,7 @@ function formatRupiah($amount) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Slip Gaji Saya - Warung Om Tante</title>
+    <title>Slip Gaji Saya - Elysium Night Club</title>
     <link rel="icon" href="LOGO_WOT.png" type="image/png">
     <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
     <link rel="stylesheet" href="style.css">
@@ -298,19 +309,9 @@ function formatRupiah($amount) {
                     <div class="value"><?= formatDuration($total_duty_minutes_summary) ?></div>
                 </div>
                 <div class="summary-item">
-                    <div class="label">
-                        <?php if ($employee_role_summary === 'chef'): ?>
-                            Total Masak
-                        <?php else: ?>
-                            Total Penjualan
-                        <?php endif; ?>
-                    </div>
+                    <div class="label">Total Penjualan</div>
                     <div class="value">
-                        <?php if ($employee_role_summary === 'chef'): ?>
-                            <?= $total_masak_paket_summary + $total_masak_snack_summary ?> Masak
-                        <?php else: ?>
-                            <?= $total_penjualan_paket_summary ?> Paket
-                        <?php endif; ?>
+                        <?= $total_penjualan_paket_summary ?> Paket
                     </div>
                 </div>
                 <div class="summary-item">

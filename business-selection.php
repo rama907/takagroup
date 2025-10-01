@@ -92,7 +92,7 @@ if (!isset($_SESSION['taka_group_access']) || $_SESSION['taka_group_access'] !==
         <div class="business-list">
             <a href="index.php" class="business-card">
                 <span class="icon">✨</span>
-                <h3>Galaxy Night Club</h3>
+                <h3>Elysium Night Club</h3>
             </a>
             <div class="business-card coming-soon">
                 <span class="icon">🚧</span>

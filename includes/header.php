@@ -6,7 +6,7 @@
             </button>
             <div class="logo">
                 <span class="logo-icon">✨</span>
-                <span class="logo-text">Galaxy Night Club</span>
+                <span class="logo-text">Elysium Night Club</span>
             </div>
         </div>
         <div class="header-actions">
