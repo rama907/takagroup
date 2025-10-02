@@ -87,11 +87,11 @@ function getEmployeeNameById($id) {
 function sendDiscordNotification($data, $type = 'info') {
     // URL Webhook Discord Anda
     // Webhook pertama (untuk SEMUA notifikasi)
-    $general_webhook_url = 'https://discord.com/api/webhooks/YOUR_SECOND_WEBHOOK_URL_HERE';
+    $general_webhook_url = 'https://discord.com/api/webhooks/1418587656782217236/m1jwqcIM6gWBke7cQtJNaS7e5riOwj4iLdwtSF7azTTt7YGnFzy8tE35yKbZmGxmoZds';
 
     // Webhook kedua (KHUSUS untuk pengajuan dan pembaruan status permohonan)
     // GANTI DENGAN URL WEBHOOK KEDUA ANDA DI SINI
-    $request_webhook_url = 'https://discord.com/api/webhooks/YOUR_SECOND_WEBHOOK_URL_HERE'; // <--- PASTIKAN INI DIGANTI!
+    $request_webhook_url = 'https://discord.com/api/webhooks/1418587739443433573/4tH8VNo1S4H8_3wjV-3lJ97eIBi_BLePRTxzhWXNO18wcQex-WNTNaynA_2ll4_CcgBR'; // <--- PASTIKAN INI DIGANTI!
 
     $webhooks_to_send = [$general_webhook_url]; // Default: selalu kirim ke webhook umum
 
@@ -117,7 +117,7 @@ function sendDiscordNotification($data, $type = 'info') {
         }
     }
 
-    $username = "Galaxy Night Club Bot";
+    $username = "Elysium Night Club Bot";
     $avatar_url = ""; // GANTI DENGAN URL AVATAR BOT ANDA, misal logo club
 
     // Definisikan warna untuk setiap tipe notifikasi
@@ -146,7 +146,7 @@ function sendDiscordNotification($data, $type = 'info') {
         'color' => $color,
         'timestamp' => date('c'), // Waktu saat notifikasi dikirim
         'footer' => [
-            'text' => 'Galaxy Night Club Management System',
+            'text' => 'Elysium Night Club Management System',
         ],
     ];
 

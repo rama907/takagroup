@@ -16,17 +16,21 @@ $selected_date = null;
 $refrigerator_transactions = [];
 $warehouse_transactions = [];
 $sales_details = [];
+$summary_totals = [
+    'refrigerator' => ['deposit' => 0, 'withdraw' => 0, 'details' => []],
+    'warehouse' => ['deposit' => 0, 'withdraw' => 0, 'details' => []],
+    'sales' => ['total' => 0, 'details' => []],
+];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['search'])) {
     $selected_employee_id = (int)($_POST['employee_id'] ?? 0);
     $selected_date = $_POST['report_date'] ?? date('Y-m-d');
 
     if ($selected_employee_id > 0) {
-        // Fetch Refrigerator Transactions
+        // --- 1. Fetch Refrigerator Transactions ---
         $stmt_fridge = $conn->prepare("
-            SELECT rt.product_name, rt.quantity, rt.transaction_type, rt.transaction_at, e.name as employee_name
+            SELECT rt.product_name, rt.quantity, rt.transaction_type, rt.transaction_at
             FROM refrigerator_transactions rt
-            JOIN employees e ON rt.employee_id = e.id
             WHERE rt.employee_id = ? AND DATE(rt.transaction_at) = ?
             ORDER BY rt.transaction_at ASC
         ");
@@ -34,12 +38,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['search'])) {
         $stmt_fridge->execute();
         $refrigerator_transactions = $stmt_fridge->get_result()->fetch_all(MYSQLI_ASSOC);
         $stmt_fridge->close();
+        
+        // Calculate Refrigerator Summary
+        foreach ($refrigerator_transactions as $log) {
+            $type = $log['transaction_type'];
+            $qty = $log['quantity'];
+            $product = str_replace('_', ' ', $log['product_name']);
+            
+            $summary_totals['refrigerator'][$type] += $qty;
+            if (!isset($summary_totals['refrigerator']['details'][$product][$type])) {
+                 $summary_totals['refrigerator']['details'][$product][$type] = 0;
+            }
+            $summary_totals['refrigerator']['details'][$product][$type] += $qty;
+        }
 
-        // Fetch Warehouse Transactions
+        // --- 2. Fetch Warehouse Transactions ---
         $stmt_warehouse = $conn->prepare("
-            SELECT wt.product_name, wt.quantity, wt.transaction_type, wt.transaction_at, e.name as employee_name
+            SELECT wt.product_name, wt.quantity, wt.transaction_type, wt.transaction_at
             FROM warehouse_transactions wt
-            JOIN employees e ON wt.employee_id = e.id
             WHERE wt.employee_id = ? AND DATE(wt.transaction_at) = ?
             ORDER BY wt.transaction_at ASC
         ");
@@ -48,7 +64,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['search'])) {
         $warehouse_transactions = $stmt_warehouse->get_result()->fetch_all(MYSQLI_ASSOC);
         $stmt_warehouse->close();
 
-        // Perbaikan: Ganti query sales data untuk mencocokkan skema baru
+        // Calculate Warehouse Summary
+        foreach ($warehouse_transactions as $log) {
+            $type = $log['transaction_type'];
+            $qty = $log['quantity'];
+            $product = str_replace('_', ' ', $log['product_name']);
+            
+            $summary_totals['warehouse'][$type] += $qty;
+            if (!isset($summary_totals['warehouse']['details'][$product][$type])) {
+                 $summary_totals['warehouse']['details'][$product][$type] = 0;
+            }
+            $summary_totals['warehouse']['details'][$product][$type] += $qty;
+        }
+
+        // --- 3. Fetch Sales Details ---
         $stmt_sales = $conn->prepare("
             SELECT 
                 input_time,
@@ -67,6 +96,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['search'])) {
         $stmt_sales->execute();
         $sales_details = $stmt_sales->get_result()->fetch_all(MYSQLI_ASSOC);
         $stmt_sales->close();
+
+        // Calculate Sales Summary
+        $sales_products = [
+            'Sake' => 'paket_sake', 
+            'Anggur Merah' => 'paket_anggur_merah', 
+            'Tuak' => 'paket_tuak', 
+            'Soju' => 'paket_soju', 
+            'Spicy 1' => 'paket_spicy_1', 
+            'Spicy 2' => 'paket_spicy_2', 
+            'Spicy 3' => 'paket_spicy_3'
+        ];
+        
+        $total_sales_qty = 0;
+        $sales_details_summary = [];
+
+        foreach ($sales_details as $entry) {
+            foreach ($sales_products as $label => $key) {
+                $qty = $entry[$key] ?? 0;
+                if ($qty > 0) {
+                    if (!isset($sales_details_summary[$label])) {
+                        $sales_details_summary[$label] = 0;
+                    }
+                    $sales_details_summary[$label] += $qty;
+                    $total_sales_qty += $qty;
+                }
+            }
+        }
+        $summary_totals['sales']['total'] = $total_sales_qty;
+        $summary_totals['sales']['details'] = $sales_details_summary;
     }
 }
 ?>
@@ -95,6 +153,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['search'])) {
             display: grid;
             grid-template-columns: 1fr;
             gap: 2rem;
+        }
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: var(--spacing-lg);
+            margin-bottom: var(--spacing-2xl);
+        }
+        .summary-card-small {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-xl);
+            padding: var(--spacing-lg);
+            box-shadow: var(--shadow-sm);
+        }
+        .summary-card-small h4 {
+            font-size: 1rem;
+            color: var(--text-secondary);
+            margin-bottom: var(--spacing-xs);
+        }
+        .summary-card-small .value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--primary-color);
+        }
+        .summary-card-detail {
+            margin-top: 1rem;
+            font-size: 0.85rem;
+            line-height: 1.5;
+            color: var(--text-primary);
+        }
+        .summary-card-detail span {
+            display: block;
+            color: var(--text-muted);
+        }
+        .summary-card-detail.sales-detail span {
+            color: var(--text-primary);
+            font-weight: 600;
         }
         .transaction-log-list {
             list-style: none;
@@ -125,12 +220,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['search'])) {
             margin-bottom: 0.75rem;
             padding: 1rem;
         }
-        .sale-item p {
-            margin: 0.25rem 0;
+        .sale-item ul {
+            list-style-type: none;
+            padding-left: 0;
+            margin-top: 0.5rem;
         }
-        .sale-item .item-detail {
+        .sale-item li {
             font-size: 0.9rem;
-            color: var(--text-secondary);
+            color: var(--text-primary);
+            margin-bottom: 0.2rem;
+            background: var(--bg-tertiary);
+            padding: 0.5rem;
+            border-radius: var(--radius-sm);
         }
         .badge-deposit {
             background-color: var(--success-light);
@@ -192,9 +293,83 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['search'])) {
 
             <?php if (isset($_POST['search'])): ?>
             <div class="report-results-section">
+                <div class="summary-grid">
+                    <div class="summary-card-small" style="border-left: 4px solid var(--primary-color);">
+                        <h4>Total Penjualan Paket</h4>
+                        <p class="value" style="color: var(--primary-color);"><?= $summary_totals['sales']['total'] ?></p>
+                        <div class="summary-card-detail sales-detail">
+                            <?php 
+                            foreach ($summary_totals['sales']['details'] as $product => $qty) {
+                                echo "<span>{$product}: {$qty}</span>";
+                            }
+                            ?>
+                        </div>
+                    </div>
+                    <div class="summary-card-small" style="border-left: 4px solid var(--success-color);">
+                        <h4>Total Deposit Kulkas</h4>
+                        <p class="value" style="color: var(--success-color);"><?= $summary_totals['refrigerator']['deposit'] ?></p>
+                        <div class="summary-card-detail">
+                            <?php 
+                            $fridge_details = $summary_totals['refrigerator']['details'];
+                            $products = ['Sake', 'Anggur Merah', 'Tuak', 'Soju', 'Spicy 1', 'Spicy 2', 'Spicy 3'];
+                            foreach ($products as $p) {
+                                $qty = $fridge_details[$p]['deposit'] ?? 0;
+                                if ($qty > 0) {
+                                    echo "<span>$p: $qty</span>";
+                                }
+                            }
+                            ?>
+                        </div>
+                    </div>
+                    <div class="summary-card-small" style="border-left: 4px solid var(--danger-color);">
+                        <h4>Total Withdraw Kulkas</h4>
+                        <p class="value" style="color: var(--danger-color);"><?= $summary_totals['refrigerator']['withdraw'] ?></p>
+                        <div class="summary-card-detail">
+                            <?php 
+                            foreach ($products as $p) {
+                                $qty = $fridge_details[$p]['withdraw'] ?? 0;
+                                if ($qty > 0) {
+                                    echo "<span>$p: $qty</span>";
+                                }
+                            }
+                            ?>
+                        </div>
+                    </div>
+                    <div class="summary-card-small" style="border-left: 4px solid var(--success-color);">
+                        <h4>Total Deposit Gudang</h4>
+                        <p class="value" style="color: var(--success-color);"><?= $summary_totals['warehouse']['deposit'] ?></p>
+                        <div class="summary-card-detail">
+                            <?php 
+                            $warehouse_details = $summary_totals['warehouse']['details'];
+                            $products = ['Jagung', 'Anggur', 'Bawang Merah', 'Strawberry', 'Lemon', 'Susu', 'Botol Kosong', 'Gelas Kosong', 'Piring Kosong', 'Bahan Khusus'];
+                            foreach ($products as $p) {
+                                $qty = $warehouse_details[$p]['deposit'] ?? 0;
+                                if ($qty > 0) {
+                                    echo "<span>$p: $qty</span>";
+                                }
+                            }
+                            ?>
+                        </div>
+                    </div>
+                    <div class="summary-card-small" style="border-left: 4px solid var(--danger-color);">
+                        <h4>Total Withdraw Gudang</h4>
+                        <p class="value" style="color: var(--danger-color);"><?= $summary_totals['warehouse']['withdraw'] ?></p>
+                        <div class="summary-card-detail">
+                            <?php 
+                            foreach ($products as $p) {
+                                $qty = $warehouse_details[$p]['withdraw'] ?? 0;
+                                if ($qty > 0) {
+                                    echo "<span>$p: $qty</span>";
+                                }
+                            }
+                            ?>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="card full-width">
                     <div class="card-header">
-                        <h3>Stok Kulkas</h3>
+                        <h3>Detail Transaksi Stok Kulkas</h3>
                     </div>
                     <div class="card-content">
                         <?php if (empty($refrigerator_transactions)): ?>
@@ -220,7 +395,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['search'])) {
 
                 <div class="card full-width">
                     <div class="card-header">
-                        <h3>Stok Gudang</h3>
+                        <h3>Detail Transaksi Stok Gudang</h3>
                     </div>
                     <div class="card-content">
                         <?php if (empty($warehouse_transactions)): ?>
@@ -246,7 +421,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['search'])) {
 
                 <div class="card full-width">
                     <div class="card-header">
-                        <h3>Penjualan</h3>
+                        <h3>Detail Penjualan</h3>
                     </div>
                     <div class="card-content">
                         <?php if (empty($sales_details)): ?>

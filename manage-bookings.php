@@ -13,7 +13,7 @@ $pending_requests_count = getPendingRequestCount();
 $success = null;
 $error = null;
 
-// Handle actions (Approve, Decline, Update Payment)
+// Handle actions (Approve, Decline, Update Payment, Mark Used)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     $action = $_POST['action'] ?? '';
     $booking_id = (int)($_POST['booking_id'] ?? 0);
@@ -28,7 +28,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 SELECT rb.*, r.room_name
                 FROM room_bookings rb
                 JOIN rooms r ON rb.room_id = r.id
-                WHERE rb.id = ?
+                WHERE rb.id = ? FOR UPDATE
             ");
             $stmt_get->bind_param("i", $booking_id);
             $stmt_get->execute();
@@ -41,6 +41,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
             $message = '';
             $status_to_update = '';
+            $payment_status_update = '';
 
             switch ($action) {
                 case 'approve_booking':
@@ -62,10 +63,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
                 case 'decline_booking':
                     $status_to_update = 'declined';
-                    $message = "Pemesanan ruangan `{$booking_data['room_name']}` oleh `{$booking_data['booking_name']}` berhasil ditolak.";
+                    $payment_status_update = 'pending'; // Status pembayaran direset ke 'pending' (Belum Bayar)
+                    $message = "Pemesanan ruangan `{$booking_data['room_name']}` oleh `{$booking_data['booking_name']}` berhasil ditolak. Status pembayaran direset.";
                     
-                    $update_stmt = $conn->prepare("UPDATE room_bookings SET booking_status = ?, updated_by = ?, updated_at = NOW() WHERE id = ?");
-                    $update_stmt->bind_param("sii", $status_to_update, $user['id'], $booking_id);
+                    $update_stmt = $conn->prepare("UPDATE room_bookings SET booking_status = ?, payment_status = ?, updated_by = ?, updated_at = NOW() WHERE id = ?");
+                    $update_stmt->bind_param("ssii", $status_to_update, $payment_status_update, $user['id'], $booking_id);
                     if (!$update_stmt->execute()) { throw new Exception("Gagal mengupdate status: " . $update_stmt->error); }
                     $update_stmt->close();
 
@@ -167,6 +169,63 @@ if ($result instanceof mysqli_result) {
     <link rel="icon" href="LOGO_WOT.png" type="image/png">
     <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
     <link rel="stylesheet" href="style.css">
+    <style>
+        .status-badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: var(--radius-md);
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            white-space: nowrap;
+        }
+
+        /* Booking Status Colors */
+        .status-pending_approval { /* Initial state for booking status */
+            background-color: var(--primary-light);
+            color: var(--primary-color);
+        }
+        .status-approved {
+            background-color: var(--success-light);
+            color: var(--success-color);
+        }
+        .status-declined {
+            background-color: var(--danger-light);
+            color: var(--danger-color);
+        }
+        .status-used {
+            background-color: var(--bg-tertiary); /* Soft gray */
+            color: var(--text-secondary);
+        }
+
+        /* Payment Status Colors */
+        .status-pending { /* Maps to DB value 'pending' (which means Belum Bayar/Unpaid) */
+            background-color: var(--warning-light);
+            color: var(--warning-color);
+        }
+        .status-dp_paid {
+            background-color: var(--info-light);
+            color: var(--info-color); /* Gold/Info */
+        }
+        .status-full_paid {
+            background-color: var(--success-light);
+            color: var(--success-color);
+        }
+        
+        .action-column {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+            align-items: flex-end;
+        }
+        .action-column .btn {
+            padding: 0.4rem 0.8rem;
+            font-size: 0.75rem;
+            white-space: nowrap;
+        }
+    </style>
 </head>
 <body>
     <div class="dashboard-container">
@@ -224,12 +283,28 @@ if ($result instanceof mysqli_result) {
                                         <td data-label="Tujuan"><?= htmlspecialchars($booking['booking_purpose'] ?? '-') ?></td>
                                         <td data-label="Status Booking">
                                             <span class="status-badge status-<?= strtolower($booking['booking_status']) ?>">
-                                                <?= ucfirst(str_replace('_', ' ', $booking['booking_status'])) ?>
+                                                <?php 
+                                                $booking_status_text = [
+                                                    'pending_approval' => 'PENDING PERSETUJUAN',
+                                                    'approved' => 'DISETUJUI', 
+                                                    'declined' => 'DITOLAK',
+                                                    'used' => 'SELESAI DIGUNAKAN'
+                                                ];
+                                                echo $booking_status_text[$booking['booking_status']] ?? ucfirst(str_replace('_', ' ', $booking['booking_status']));
+                                                ?>
                                             </span>
                                         </td>
                                         <td data-label="Status Bayar">
                                             <span class="status-badge status-<?= strtolower($booking['payment_status']) ?>">
-                                                <?= ucfirst(str_replace('_', ' ', $booking['payment_status'])) ?>
+                                                <?php 
+                                                // Mengganti semua tampilan 'pending' pada payment_status menjadi 'BELUM BAYAR'
+                                                $payment_status_text = [
+                                                    'pending' => 'BELUM BAYAR',
+                                                    'dp_paid' => 'DP TERBAYAR', 
+                                                    'full_paid' => 'LUNAS'
+                                                ];
+                                                echo $payment_status_text[$booking['payment_status']] ?? ucfirst(str_replace('_', ' ', $booking['payment_status']));
+                                                ?>
                                             </span>
                                         </td>
                                         <td data-label="Aksi" class="action-column">
@@ -239,7 +314,7 @@ if ($result instanceof mysqli_result) {
                                                 <input type="hidden" name="booking_id" value="<?= $booking['id'] ?>">
                                                 <button type="submit" class="btn btn-success btn-sm">Setujui</button>
                                             </form>
-                                            <form method="POST" onsubmit="return confirm('Yakin ingin menolak pemesanan ini?')">
+                                            <form method="POST" onsubmit="return confirm('Yakin ingin menolak pemesanan ini? Status pembayaran akan direset menjadi BELUM BAYAR.')">
                                                 <input type="hidden" name="action" value="decline_booking">
                                                 <input type="hidden" name="booking_id" value="<?= $booking['id'] ?>">
                                                 <button type="submit" class="btn btn-danger btn-sm">Tolak</button>

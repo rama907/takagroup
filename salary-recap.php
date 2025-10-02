@@ -9,46 +9,30 @@ if (!isLoggedIn() || !hasRole(['ceo', 'direktur', 'wakil_direktur', 'manager']))
 $user = getCurrentUser();
 $pending_requests_count = getPendingRequestCount();
 
-// Definisi gaji pokok per jabatan
-$base_salaries = [
-    'direktur' => 1415000,
-    'wakil_direktur' => 1215000,
-    'manager' => 915000,
-    'chef' => 815000,
-    'karyawan' => 685000,
-    'magang' => 615000,
+// Definisi gaji per jam baru (Rupiah per jam)
+$hourly_rates = [
+    'ceo' => 0,          // Tidak ada gaji
+    'direktur' => 0,     // Tidak ada gaji
+    'wakil_direktur' => 0, // Tidak ada gaji
+    'manager' => 41175,
+    'barista' => 36720,
+    'waiters' => 31500,
+    'guard' => 31500,
+    'karyawan' => 31500,
+    'magang' => 27000,
+    'chef' => 0, // Jika peran chef masih ada dan tidak digaji
 ];
 
-// Definisi bonus lembur per jam per jabatan (untuk jam di atas 21 jam)
-$overtime_hourly_bonus = [
-    'direktur' => 35000,
-    'wakil_direktur' => 35000,
-    'manager' => 30000,
-    'chef' => 25000,
-    'karyawan' => 20000,
-    'magang' => 15000,
-];
-
+// Konstanta perhitungan
+$min_duty_hours_no_salary = 5;
+$min_duty_minutes_no_salary = $min_duty_hours_no_salary * 60; // 300 menit
 $min_duty_hours_for_base_salary = 8;
-$min_duty_minutes_for_base_salary = $min_duty_hours_for_base_salary * 60;
-
-$min_duty_hours_for_bonus = 21;
-$min_duty_minutes_for_bonus = $min_duty_hours_for_bonus * 60;
-
-$overtime_cap_hours = 15;
-$overtime_cap_minutes = $overtime_cap_hours * 60;
-
-$sales_bonus_threshold = 400;
-$sales_bonus_amount = 800000;
-
-$duty_21_hour_bonus = 1000000;
-
-$performance_cut_off_threshold = 400;
+$min_duty_minutes_for_base_salary = $min_duty_hours_for_base_salary * 60; // 480 menit
 
 $success_message = null;
 $error_message = null;
 
-// --- Handle Payment Status Actions ---
+// --- Handle Payment Status Actions (Dibiarkan sama) ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     $action = $_POST['action'];
     $employee_id = (int)($_POST['employee_id'] ?? 0);
@@ -126,7 +110,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 }
                 $stmt->close();
             } elseif ($action === 'delete_sales_data') {
-                // Hapus data penjualan dan masak
+                // Hapus data penjualan 
                 $stmt_delete_sales = $conn->prepare("DELETE FROM sales_data WHERE employee_id = ?");
                 if (!$stmt_delete_sales) {
                     throw new Exception("Gagal menyiapkan query hapus data penjualan: " . $conn->error);
@@ -145,7 +129,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $stmt_delete_duty->close();
 
                 $conn->commit();
-                $success_message = "Semua data penjualan, masak, dan jam kerja (completed) untuk **" . htmlspecialchars($employee_name) . "** telah berhasil dihapus.";
+                $success_message = "Semua data penjualan dan jam kerja (completed) untuk **" . htmlspecialchars($employee_name) . "** telah berhasil dihapus.";
             }
         }
 
@@ -223,75 +207,53 @@ foreach ($employees_raw_data as $employee) {
     $employee_id = $employee['id'];
     $employee_role = $employee['role'];
     $total_duty_minutes = $employee['total_duty_minutes'];
-
-    $total_sake = $employee['paket_sake'] ?? 0;
-    $total_anggur_merah = $employee['paket_anggur_merah'] ?? 0;
-    $total_tuak = $employee['paket_tuak'] ?? 0;
-    $total_soju = $employee['paket_soju'] ?? 0;
-    $total_spicy_1 = $employee['paket_spicy_1'] ?? 0;
-    $total_spicy_2 = $employee['paket_spicy_2'] ?? 0;
-    $total_spicy_3 = $employee['paket_spicy_3'] ?? 0;
-
-    $overtime_minutes = 0;
-    $overtime_hours_display = 0;
-    $overtime_remaining_minutes = 0;
-    $nominal_bonus_lembur_perjam = 0;
-    $total_bonus_lembur = 0;
+    $total_duty_hours = $total_duty_minutes / 60;
+    
+    // Total Penjualan untuk data export
+    $total_sales_packages = ($employee['paket_sake'] ?? 0) + ($employee['paket_anggur_merah'] ?? 0) + ($employee['paket_tuak'] ?? 0) + ($employee['paket_soju'] ?? 0) + ($employee['paket_spicy_1'] ?? 0) + ($employee['paket_spicy_2'] ?? 0) + ($employee['paket_spicy_3'] ?? 0);
 
     $gaji_pokok = 0;
-    if ($total_duty_minutes >= $min_duty_minutes_for_base_salary && isset($base_salaries[$employee_role])) {
-        $gaji_pokok = $base_salaries[$employee_role];
-    }
+    $total_gajian = 0;
+    $cut_percentage = 0;
+    $keterangan_gaji = 'N/A';
 
-    $bonus_21_jam = 0;
-    if ($total_duty_minutes >= $min_duty_minutes_for_bonus) {
-        $bonus_21_jam = $duty_21_hour_bonus;
-    }
-
-    if ($total_duty_minutes > $min_duty_minutes_for_bonus) {
-        $overtime_minutes_raw = $total_duty_minutes - $min_duty_minutes_for_bonus;
-        $overtime_minutes = min($overtime_minutes_raw, $overtime_cap_minutes);
+    // --- LOGIKA PERHITUNGAN GAJI BARU ---
+    if (isset($hourly_rates[$employee_role])) {
+        $hourly_rate = $hourly_rates[$employee_role];
         
-        $overtime_hours_display = floor($overtime_minutes / 60);
-        $overtime_remaining_minutes = $overtime_minutes % 60;
-
-        if (isset($overtime_hourly_bonus[$employee_role])) {
-            $nominal_bonus_lembur_perjam = $overtime_hourly_bonus[$employee_role];
-            $total_bonus_lembur = ($overtime_minutes / 60) * $nominal_bonus_lembur_perjam;
+        // 1. Peran Tertentu (CEO, Direktur, Wakil Direktur) tidak digaji
+        if (in_array($employee_role, ['ceo', 'direktur', 'wakil_direktur'])) {
+            $total_gajian = 0;
+            $gaji_pokok = 0;
+            $keterangan_gaji = 'Tidak Digaji';
+        } 
+        // 2. Jika Total Duty < 5 jam (300 menit): TIDAK DAPAT GAJI
+        elseif ($total_duty_minutes < $min_duty_minutes_no_salary) {
+            $total_gajian = 0;
+            $gaji_pokok = 0;
+            $keterangan_gaji = 'Tidak Digaji (Duty < 5j)';
+        }
+        // 3. Jika Total Duty antara 5 jam dan < 8 jam (300 <= Duty < 480 menit)
+        elseif ($total_duty_minutes < $min_duty_minutes_for_base_salary) { 
+            // Gaji = 50% dari total gaji 8 jam duty
+            $gaji_8_jam = $hourly_rate * $min_duty_hours_for_base_salary;
+            $gaji_pokok = $gaji_8_jam * 0.50;
+            $total_gajian = $gaji_pokok;
+            $is_bonus_cut = true; // Menandakan pemotongan 50%
+            $keterangan_gaji = 'Potongan 50% (Duty < 8j)';
+        }
+        // 4. Jika Total Duty >= 8 jam (Duty >= 480 menit)
+        else {
+            // Gaji dihitung pro-rata berdasarkan total_duty_minutes
+            $gaji_per_menit = $hourly_rate / 60;
+            $gaji_pokok = $gaji_per_menit * $total_duty_minutes;
+            $total_gajian = $gaji_pokok;
+            $keterangan_gaji = 'Lulus Syarat (Pro-rata)';
         }
     }
+    // --- AKHIR LOGIKA PERHITUNGAN GAJI BARU ---
+
     
-    // Perbaikan: Menghitung total penjualan dari produk baru
-    $total_penjualan_paket = $total_sake + $total_anggur_merah + $total_tuak + $total_soju + $total_spicy_1 + $total_spicy_2 + $total_spicy_3;
-
-    $bonus_penjualan = 0;
-    if (in_array($employee_role, ['karyawan', 'magang'])) {
-        if ($total_penjualan_paket >= $sales_bonus_threshold) {
-            $bonus_penjualan = $sales_bonus_amount;
-        }
-    }
-
-    $is_bonus_cut = false;
-    $performance_indicator_text = '';
-
-    if (in_array($employee_role, ['karyawan', 'magang'])) {
-        $performance_indicator = $total_penjualan_paket;
-        if ($performance_indicator < $performance_cut_off_threshold) {
-            $bonus_21_jam *= 0.5;
-            $total_bonus_lembur *= 0.5;
-            $is_bonus_cut = true;
-        }
-    } elseif ($employee_role === 'chef') {
-        // Logika untuk chef, asumsi tidak ada produk masak lagi
-        $performance_indicator = 0; 
-        if ($performance_indicator < $performance_cut_off_threshold) {
-            $bonus_21_jam *= 0.5;
-            $total_bonus_lembur *= 0.5;
-            $is_bonus_cut = true;
-        }
-    }
-    
-    $total_gajian = $gaji_pokok + $bonus_21_jam + $total_bonus_lembur + $bonus_penjualan;
     $total_payroll_expenditure += $total_gajian;
 
     $employees_data[] = [
@@ -300,23 +262,19 @@ foreach ($employees_raw_data as $employee) {
         'role' => $employee['role'],
         'is_paid' => (bool)$employee['is_paid'],
         'total_duty_minutes' => $total_duty_minutes,
-        'paket_sake' => $total_sake,
-        'paket_anggur_merah' => $total_anggur_merah,
-        'paket_tuak' => $total_tuak,
-        'paket_soju' => $total_soju,
-        'paket_spicy_1' => $total_spicy_1,
-        'paket_spicy_2' => $total_spicy_2,
-        'paket_spicy_3' => $total_spicy_3,
-        'total_sales_packages' => $total_penjualan_paket,
-        'overtime_hours_display' => $overtime_hours_display,
-        'overtime_remaining_minutes' => $overtime_remaining_minutes,
-        'gaji_pokok' => $gaji_pokok,
-        'bonus_penjualan' => $bonus_penjualan,
-        'nominal_bonus_lembur_perjam' => $nominal_bonus_lembur_perjam,
-        'total_bonus_lembur' => $total_bonus_lembur,
-        'bonus_21_jam' => $bonus_21_jam,
+        'total_duty_hours' => $total_duty_hours,
+        'total_sales_packages' => $total_sales_packages,
+        // Komponen Bonus dihilangkan / diatur 0
+        'overtime_hours_display' => 0, 
+        'overtime_remaining_minutes' => 0,
+        'gaji_pokok' => $total_gajian, // Gaji Pokok mencerminkan Total Gaji yang dibayarkan
+        'bonus_penjualan' => 0, 
+        'nominal_bonus_lembur_perjam' => 0,
+        'total_bonus_lembur' => 0,
+        'bonus_21_jam' => 0,
         'total_gajian' => $total_gajian,
-        'is_bonus_cut' => $is_bonus_cut
+        'is_bonus_cut' => $is_bonus_cut,
+        'keterangan_gaji' => $keterangan_gaji
     ];
 }
 
@@ -337,22 +295,9 @@ if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
         'Jabatan',
         'Total Jam Duty (Jam)',
         'Total Jam Duty (Menit)',
-        'Sake',
-        'Anggur Merah',
-        'Tuak',
-        'Soju',
-        'Spicy 1',
-        'Spicy 2',
-        'Spicy 3',
         'Total Penjualan Paket',
-        'Jam Lembur (Jam)',
-        'Menit Lembur (Sisa)',
-        'Gaji Pokok (Rp)',
-        'Bonus Penjualan (Rp)',
-        'Bonus Lembur Per Jam (Rp)',
-        'Total Bonus Lembur (Rp)',
-        'Bonus On Duty 21 Jam (Rp)',
-        'Total Gajian (Rp)',
+        'Gaji Bersih (Rp)',
+        'Keterangan Gaji',
         'Status Pembayaran'
     ];
     fputcsv($output, $headers);
@@ -361,24 +306,11 @@ if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
         $data_row = [
             htmlspecialchars_decode($row['name']),
             getRoleDisplayName($row['role']),
-            floor($row['total_duty_minutes'] / 60),
+            number_format($row['total_duty_minutes'] / 60, 2), // Tampilkan jam dengan 2 desimal
             $row['total_duty_minutes'],
-            $row['paket_sake'],
-            $row['paket_anggur_merah'],
-            $row['paket_tuak'],
-            $row['paket_soju'],
-            $row['paket_spicy_1'],
-            $row['paket_spicy_2'],
-            $row['paket_spicy_3'],
             $row['total_sales_packages'],
-            $row['overtime_hours_display'],
-            $row['overtime_remaining_minutes'],
-            $row['gaji_pokok'],
-            $row['bonus_penjualan'],
-            $row['nominal_bonus_lembur_perjam'],
-            $row['total_bonus_lembur'],
-            $row['bonus_21_jam'],
             $row['total_gajian'],
+            $row['keterangan_gaji'],
             $row['is_paid'] ? 'Sudah Dibayar' : 'Belum Dibayar'
         ];
         fputcsv($output, $data_row);
@@ -456,7 +388,7 @@ if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
                     <span class="page-icon">💸</span>
                     Rekap Gaji
                 </h1>
-                <p>Ringkasan perhitungan gaji untuk semua anggota Elysium Night Club</p>
+                <p>Ringkasan perhitungan gaji untuk semua anggota Warung Om Tante</p>
                 <div class="page-actions" style="margin-top: var(--spacing-md);">
                     <a href="salary-recap.php?export=spreadsheet" class="btn btn-info" target="_blank">
                         <span class="btn-icon">⬇️</span>
@@ -531,11 +463,8 @@ if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
                                     <th>Jabatan</th>
                                     <th>Total Jam Duty</th>
                                     <th>Total Penjualan</th>
-                                    <th>Jam Lembur</th>
                                     <th>Gaji Pokok</th>
-                                    <th>Bonus Penjualan</th>
-                                    <th>Bonus Lembur</th>
-                                    <th>Bonus On Duty 21 Jam</th>
+                                    <th>Keterangan</th>
                                     <th>Total Gaji</th>
                                     <th>Status</th>
                                     <th>Aksi</th>
@@ -544,7 +473,7 @@ if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
                             <tbody>
                                 <?php if (empty($employees_data)): ?>
                                     <tr>
-                                        <td colspan="12" class="no-data">Belum ada data anggota atau aktivitas untuk rekap gaji.</td>
+                                        <td colspan="9" class="no-data">Belum ada data anggota atau aktivitas untuk rekap gaji.</td>
                                     </tr>
                                 <?php else: ?>
                                     <?php foreach ($employees_data as $employee): ?>
@@ -566,30 +495,21 @@ if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
                                             <?= formatDuration($employee['total_duty_minutes']) ?>
                                         </td>
                                         <td data-label="Total Penjualan">
-                                            <?= $employee['total_sales_packages'] ?> Paket
-                                        </td>
-                                        <td data-label="Jam Lembur">
-                                            <?php 
-                                            echo $employee['overtime_hours_display'] . 'j ' . $employee['overtime_remaining_minutes'] . 'm';
-                                            ?>
-                                            <?php if ($employee['is_bonus_cut']): ?>
-                                                <small style="display: block; color: var(--danger-color); font-weight: 600;">(Potongan 50%)</small>
-                                            <?php endif; ?>
+                                            <?= $employee['total_sales_packages'] . ' Paket' ?>
                                         </td>
                                         <td data-label="Gaji Pokok">
                                             <?= 'Rp ' . number_format($employee['gaji_pokok'], 0, ',', '.') ?>
                                         </td>
-                                        <td data-label="Bonus Penjualan">
-                                            <?= 'Rp ' . number_format($employee['bonus_penjualan'], 0, ',', '.') ?>
-                                        </td>
-                                        <td data-label="Bonus Lembur">
-                                            <?= 'Rp ' . number_format($employee['total_bonus_lembur'], 0, ',', '.') ?>
-                                            <?php if ($employee['total_bonus_lembur'] > 0): ?>
-                                                <small style="display: block; color: var(--text-muted);">(<?= 'Rp ' . number_format($employee['nominal_bonus_lembur_perjam'], 0, ',', '.') ?>/jam)</small>
+                                        <td data-label="Keterangan">
+                                            <?php if (in_array($employee['role'], ['ceo', 'direktur', 'wakil_direktur'])): ?>
+                                                <small style="display: block; color: var(--info-color); font-weight: 600;">Tidak Digaji</small>
+                                            <?php elseif ($employee['total_duty_minutes'] < $min_duty_minutes_no_salary): ?>
+                                                <small style="display: block; color: var(--danger-color); font-weight: 600;"><?= $employee['keterangan_gaji'] ?></small>
+                                            <?php elseif ($employee['is_bonus_cut']): ?>
+                                                <small style="display: block; color: var(--danger-color); font-weight: 600;"><?= $employee['keterangan_gaji'] ?></small>
+                                            <?php else: ?>
+                                                <small style="display: block; color: var(--success-color); font-weight: 600;">Lulus Syarat</small>
                                             <?php endif; ?>
-                                        </td>
-                                        <td data-label="Bonus On Duty 21 Jam">
-                                            <?= 'Rp ' . number_format($employee['bonus_21_jam'], 0, ',', '.') ?>
                                         </td>
                                         <td data-label="Total Gaji">
                                             <strong><?= 'Rp ' . number_format($employee['total_gajian'], 0, ',', '.') ?></strong>
@@ -613,10 +533,10 @@ if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
                                                 <button type="submit" class="btn btn-warning btn-sm">Batal Dibayar</button>
                                             </form>
                                             <?php endif; ?>
-                                            <form method="POST" style="display: inline; margin-top: 5px;" onsubmit="return confirm('Yakin ingin menghapus data penjualan dan masak untuk <?= htmlspecialchars($employee['name']) ?>? Tindakan ini tidak dapat dibatalkan.')">
+                                            <form method="POST" style="display: inline; margin-top: 5px;" onsubmit="return confirm('Yakin ingin menghapus data penjualan dan jam kerja untuk <?= htmlspecialchars($employee['name']) ?>? Tindakan ini tidak dapat dibatalkan.')">
                                                 <input type="hidden" name="action" value="delete_sales_data">
                                                 <input type="hidden" name="employee_id" value="<?= $employee['id'] ?>">
-                                                <button type="submit" class="btn btn-danger btn-sm">Hapus Data Penjualan</button>
+                                                <button type="submit" class="btn btn-danger btn-sm">Hapus Data Aktivitas</button>
                                             </form>
                                             <a href="generate-payslip.php?employee_id=<?= $employee['id'] ?>" target="_blank" class="btn btn-primary btn-sm">Unduh Slip Gaji</a>
                                         </td>
@@ -632,20 +552,5 @@ if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
     </div>
 
     <script src="script.js"></script>
-    <script>
-        function toggleNewPasswordInput() {
-            const newPasswordGroup = document.getElementById('new-password-group');
-            const newPasswordInput = document.getElementById('new_password');
-            const resetNewRadio = document.getElementById('reset_new');
-    
-            if (resetNewRadio.checked) {
-                newPasswordGroup.style.display = 'block';
-                newPasswordInput.setAttribute('required', 'required');
-            } else {
-                newPasswordGroup.style.display = 'none';
-                newPasswordInput.removeAttribute('required');
-            }
-        }
-    </script>
 </body>
 </html>
