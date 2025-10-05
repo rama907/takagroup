@@ -214,7 +214,7 @@ $status_is_open = $on_duty_employees_count > 0;
                 <a href="public-booking.php" class="btn btn-warning btn-booking">
                     Booking Sekarang
                 </a>
-                <a href="https://elysium-night-club.my.canva.site/elysium-house-book" target="_blank" class="btn btn-primary btn-booking" style="margin-top: 10px;">
+                <a href="https://elysium-night-club.my.canva.site/" target="_blank" class="btn btn-primary btn-booking" style="margin-top: 10px;">
                     Katalog Elysium
                 </a>
             </div>

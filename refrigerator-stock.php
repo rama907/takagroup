@@ -1,4 +1,5 @@
 <?php
+// File: rama907/takagroup/rama907-takagroup-8ee4312790aa74e2b35b9ce31a1ab20b69583b9c/refrigerator-stock.php
 require_once 'config.php';
 
 if (!isLoggedIn()) {
@@ -90,6 +91,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             
             $conn->commit();
             $success = "Transaksi " . ucfirst($action) . " berhasil untuk {$successful_logs} item: " . implode(', ', $processed_items_list);
+            
+            // >>>>>> MODIFIKASI: Kirim notifikasi Discord untuk stok kulkas <<<<<<
+            sendDiscordNotification([
+                'employee_name' => $user['name'],
+                'product_list' => $items_to_process, // Kirim array product_name => quantity
+            ], "refrigerator_{$action}");
+            // >>>>>> AKHIR MODIFIKASI <<<<<<
             
             // Redirect untuk menampilkan pesan sukses dan memuat ulang data
             header("Location: refrigerator-stock.php?msg=" . urlencode($success) . "&type=success&filter_date=" . urlencode($selected_date));

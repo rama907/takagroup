@@ -1,4 +1,6 @@
 <?php
+// File: rama907/takagroup/rama907-takagroup-8ee4312790aa74e2b35b9ce31a1ab20b69583b9c/includes/sidebar.php
+
 // Kode ini akan dieksekusi setiap kali sidebar dimuat
 // Pastikan variabel $conn dan $user sudah tersedia dari file PHP utama yang memanggil sidebar.php
 
@@ -102,6 +104,14 @@ if (isset($_SESSION['user_id']) && isset($conn) && isset($user)) {
         $stmt_my_warnings->close();
     }
 }
+
+// BARU: Ambil hitungan pending yang terpisah
+// CATATAN: Karena fungsi getPendingRequestCounts() baru dibuat, 
+// pastikan file config.php sudah diupdate dengan fungsi tersebut.
+$all_pending_counts = getPendingRequestCounts();
+$pending_requests_count = $all_pending_counts['employee_requests']; // Permohonan (Cuti, Resign, dll)
+$pending_bookings_count = $all_pending_counts['booking_requests']; // Kelola Pemesanan
+$total_pending_all = $all_pending_counts['total']; // Total semua pending (untuk menu "Semua Permohonan" jika perlu)
 
 // Hitung total surat peringatan untuk notifikasi "Semua Surat Peringatan"
 $all_warnings_count = 0;
@@ -211,17 +221,19 @@ if (isset($conn) && isLoggedIn()) {
             <span class="nav-icon">⚠️</span>
             <span class="nav-text">Manajemen SP</span>
         </a>
+
         <a href="manage-bookings.php" class="nav-item <?= basename($_SERVER['PHP_SELF']) == 'manage-bookings.php' ? 'active' : '' ?>">
             <span class="nav-icon">🛎️</span>
             <span class="nav-text">Kelola Pemesanan</span>
-            <?php if (isset($pending_requests_count) && $pending_requests_count > 0): ?>
-                <span class="pending-indicator"><?= $pending_requests_count ?></span>
+            <?php if (isset($pending_bookings_count) && $pending_bookings_count > 0): ?>
+                <span class="pending-indicator"><?= $pending_bookings_count ?></span>
             <?php endif; ?>
         </a>
         <?php endif; ?>
         
         <?php if (hasRole(['ceo', 'direktur', 'wakil_direktur'])): ?>
         <div class="nav-divider"></div>
+
         <a href="requests.php" class="nav-item <?= basename($_SERVER['PHP_SELF']) == 'requests.php' ? 'active' : '' ?>">
             <span class="nav-icon">📋</span>
             <span class="nav-text">Permohonan</span>
