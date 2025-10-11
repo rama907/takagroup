@@ -51,7 +51,9 @@ $stmt = $conn->query("
         COALESCE(sales_summary.paket_soju, 0) as paket_soju,
         COALESCE(sales_summary.paket_spicy_1, 0) as paket_spicy_1,
         COALESCE(sales_summary.paket_spicy_2, 0) as paket_spicy_2,
-        COALESCE(sales_summary.paket_spicy_3, 0) as paket_spicy_3
+        COALESCE(sales_summary.paket_spicy_3, 0) as paket_spicy_3,
+        COALESCE(sales_summary.paket_vip_person, 0) as paket_vip_person,         /* NEW: Ruangan VIP per Orang */
+        COALESCE(sales_summary.paket_special_30min, 0) as paket_special_30min     /* NEW: Ruangan Spesial per 30 Menit */
     FROM employees e
     LEFT JOIN (
         SELECT
@@ -70,7 +72,9 @@ $stmt = $conn->query("
             SUM(paket_soju) as paket_soju,
             SUM(paket_spicy_1) as paket_spicy_1,
             SUM(paket_spicy_2) as paket_spicy_2,
-            SUM(paket_spicy_3) as paket_spicy_3
+            SUM(paket_spicy_3) as paket_spicy_3,
+            SUM(paket_vip_person) as paket_vip_person,      /* NEW */
+            SUM(paket_special_30min) as paket_special_30min /* NEW */
         FROM sales_data
         GROUP BY employee_id
     ) as sales_summary ON e.id = sales_summary.employee_id
@@ -97,7 +101,7 @@ if ($stmt === false) {
 $employee_activities = $stmt->fetch_all(MYSQLI_ASSOC);
 $stmt->close();
 
-// Hitung total penjualan
+// Hitung total penjualan paketan
 $total_sake = array_sum(array_column($employee_activities, 'paket_sake'));
 $total_anggur_merah = array_sum(array_column($employee_activities, 'paket_anggur_merah'));
 $total_tuak = array_sum(array_column($employee_activities, 'paket_tuak'));
@@ -106,7 +110,16 @@ $total_spicy_1 = array_sum(array_column($employee_activities, 'paket_spicy_1'));
 $total_spicy_2 = array_sum(array_column($employee_activities, 'paket_spicy_2'));
 $total_spicy_3 = array_sum(array_column($employee_activities, 'paket_spicy_3'));
 
-$total_paket_terjual_keseluruhan = $total_sake + $total_anggur_merah + $total_tuak + $total_soju + $total_spicy_1 + $total_spicy_2 + $total_spicy_3;
+$total_penjualan_paketan = $total_sake + $total_anggur_merah + $total_tuak + $total_soju + $total_spicy_1 + $total_spicy_2 + $total_spicy_3;
+
+// NEW: Hitung total penjualan ruangan
+$total_vip_person = array_sum(array_column($employee_activities, 'paket_vip_person'));
+$total_special_30min = array_sum(array_column($employee_activities, 'paket_special_30min'));
+
+$total_penjualan_ruangan = $total_vip_person + $total_special_30min;
+
+// Total Keseluruhan (Paketan + Ruangan)
+$total_paket_terjual_keseluruhan = $total_penjualan_paketan + $total_penjualan_ruangan;
 
 // === START EXPORT LOGIC ===
 if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
@@ -123,7 +136,9 @@ if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
             COALESCE(sales_summary.paket_soju, 0) as paket_soju,
             COALESCE(sales_summary.paket_spicy_1, 0) as paket_spicy_1,
             COALESCE(sales_summary.paket_spicy_2, 0) as paket_spicy_2,
-            COALESCE(sales_summary.paket_spicy_3, 0) as paket_spicy_3
+            COALESCE(sales_summary.paket_spicy_3, 0) as paket_spicy_3,
+            COALESCE(sales_summary.paket_vip_person, 0) as paket_vip_person,
+            COALESCE(sales_summary.paket_special_30min, 0) as paket_special_30min
         FROM employees e
         LEFT JOIN (
             SELECT
@@ -142,7 +157,9 @@ if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
                 SUM(paket_soju) as paket_soju,
                 SUM(paket_spicy_1) as paket_spicy_1,
                 SUM(paket_spicy_2) as paket_spicy_2,
-                SUM(paket_spicy_3) as paket_spicy_3
+                SUM(paket_spicy_3) as paket_spicy_3,
+                SUM(paket_vip_person) as paket_vip_person,
+                SUM(paket_special_30min) as paket_special_30min
             FROM sales_data
             GROUP BY employee_id
         ) as sales_summary ON e.id = sales_summary.employee_id
@@ -191,7 +208,9 @@ if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
         'Soju',
         'Spicy 1', 
         'Spicy 2', 
-        'Spicy 3'
+        'Spicy 3',
+        'Ruangan VIP (Org)', /* NEW */
+        'Ruangan Spesial (30m)' /* NEW */
     ];
     fputcsv($output, $headers);
 
@@ -208,7 +227,9 @@ if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
             $row['paket_soju'],
             $row['paket_spicy_1'], 
             $row['paket_spicy_2'], 
-            $row['paket_spicy_3']
+            $row['paket_spicy_3'],
+            $row['paket_vip_person'],   /* NEW */
+            $row['paket_special_30min'] /* NEW */
         ];
         fputcsv($output, $data_row);
     }
@@ -267,6 +288,7 @@ if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
                             <?= $total_paket_terjual_keseluruhan ?>
                         </p>
                         <p class="stat-breakdown" style="font-size: 0.9em; margin-top: 0.5rem; text-align: left;">
+                            <strong>Paketan (Total: <?= $total_penjualan_paketan ?>):</strong>
                             <span>Sake: <strong><?= $total_sake ?></strong></span>
                             <span>Anggur Merah: <strong><?= $total_anggur_merah ?></strong></span>
                             <span>Tuak: <strong><?= $total_tuak ?></strong></span>
@@ -275,7 +297,12 @@ if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
                             <span>Spicy 2: <strong><?= $total_spicy_2 ?></strong></span>
                             <span>Spicy 3: <strong><?= $total_spicy_3 ?></strong></span>
                         </p>
-                    </div>
+                         <p class="stat-breakdown" style="font-size: 0.9em; margin-top: 0.5rem; text-align: left;">
+                            <strong>Ruangan (Total: <?= $total_penjualan_ruangan ?>):</strong>
+                            <span>Ruangan VIP (Org): <strong><?= $total_vip_person ?></strong></span>
+                            <span>Ruangan Spesial (30m): <strong><?= $total_special_30min ?></strong></span>
+                        </p>
+                        </div>
                 </div>
                 <div class="summary-card">
                     <div class="summary-icon" style="color: var(--success-color);">✅</div>
@@ -308,12 +335,12 @@ if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
                                     <th>Spicy 1</th>
                                     <th>Spicy 2</th>
                                     <th>Spicy 3</th>
-                                </tr>
+                                    <th>Ruangan VIP (Org)</th> <th>Ruangan Spesial (30m)</th> </tr>
                             </thead>
                             <tbody>
                                 <?php if (empty($employee_activities)): ?>
                                     <tr>
-                                        <td colspan="11" class="no-data">Belum ada data aktivitas anggota.</td>
+                                        <td colspan="13" class="no-data">Belum ada data aktivitas anggota.</td>
                                     </tr>
                                 <?php else: ?>
                                     <?php foreach ($employee_activities as $activity): ?>
@@ -347,7 +374,7 @@ if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
                                         <td data-label="Spicy 1"><?= $activity['paket_spicy_1'] ?></td>
                                         <td data-label="Spicy 2"><?= $activity['paket_spicy_2'] ?></td>
                                         <td data-label="Spicy 3"><?= $activity['paket_spicy_3'] ?></td>
-                                    </tr>
+                                        <td data-label="Ruangan VIP (Org)"><?= $activity['paket_vip_person'] ?></td>       <td data-label="Ruangan Spesial (30m)"><?= $activity['paket_special_30min'] ?></td> </tr>
                                     <?php endforeach; ?>
                                 <?php endif; ?>
                             </tbody>

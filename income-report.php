@@ -17,7 +17,11 @@ $price_soju = 20000;
 $price_spicy_1 = 65000;
 $price_spicy_2 = 45000;
 $price_spicy_3 = 35000;
+// NEW PRICES FOR ROOMS
+$price_vip_person = 50000;
+$price_special_30min = 350000;
 
+// Inisialisasi total income
 $total_income_sake = 0;
 $total_income_anggur_merah = 0;
 $total_income_tuak = 0;
@@ -25,8 +29,13 @@ $total_income_soju = 0;
 $total_income_spicy_1 = 0;
 $total_income_spicy_2 = 0;
 $total_income_spicy_3 = 0;
+// NEW TOTAL INCOME VARIABLES
+$total_income_vip = 0;
+$total_income_special = 0;
+
 $overall_total_income = 0;
 
+// Inisialisasi total paket/unit
 $total_sake_packages = 0;
 $total_anggur_merah_packages = 0;
 $total_tuak_packages = 0;
@@ -34,6 +43,10 @@ $total_soju_packages = 0;
 $total_spicy_1_packages = 0;
 $total_spicy_2_packages = 0;
 $total_spicy_3_packages = 0;
+// NEW TOTAL UNIT VARIABLES
+$total_vip_packages = 0;
+$total_special_packages = 0;
+
 
 // Ambil total pemasukan dari sales_data secara menyeluruh
 $stmt = $conn->prepare("
@@ -44,7 +57,9 @@ $stmt = $conn->prepare("
         COALESCE(SUM(paket_soju), 0) as sum_soju,
         COALESCE(SUM(paket_spicy_1), 0) as sum_spicy_1,
         COALESCE(SUM(paket_spicy_2), 0) as sum_spicy_2,
-        COALESCE(SUM(paket_spicy_3), 0) as sum_spicy_3
+        COALESCE(SUM(paket_spicy_3), 0) as sum_spicy_3,
+        COALESCE(SUM(paket_vip_person), 0) as sum_vip,      /* NEW */
+        COALESCE(SUM(paket_special_30min), 0) as sum_special /* NEW */
     FROM sales_data
 ");
 
@@ -61,6 +76,9 @@ if ($stmt) {
         $total_spicy_1_packages = $result['sum_spicy_1'];
         $total_spicy_2_packages = $result['sum_spicy_2'];
         $total_spicy_3_packages = $result['sum_spicy_3'];
+        // NEW ASSIGNMENTS
+        $total_vip_packages = $result['sum_vip'];
+        $total_special_packages = $result['sum_special'];
 
         $total_income_sake = $total_sake_packages * $price_sake;
         $total_income_anggur_merah = $total_anggur_merah_packages * $price_anggur_merah;
@@ -69,8 +87,12 @@ if ($stmt) {
         $total_income_spicy_1 = $total_spicy_1_packages * $price_spicy_1;
         $total_income_spicy_2 = $total_spicy_2_packages * $price_spicy_2;
         $total_income_spicy_3 = $total_spicy_3_packages * $price_spicy_3;
+        // NEW INCOME CALCULATIONS
+        $total_income_vip = $total_vip_packages * $price_vip_person;
+        $total_income_special = $total_special_packages * $price_special_30min;
 
-        $overall_total_income = $total_income_sake + $total_income_anggur_merah + $total_income_tuak + $total_income_soju + $total_income_spicy_1 + $total_income_spicy_2 + $total_income_spicy_3;
+        // OVERALL TOTAL INCOME (UPDATED)
+        $overall_total_income = $total_income_sake + $total_income_anggur_merah + $total_income_tuak + $total_income_soju + $total_income_spicy_1 + $total_income_spicy_2 + $total_income_spicy_3 + $total_income_vip + $total_income_special;
     }
 } else {
     die("Gagal menyiapkan query: " . $conn->error);
@@ -96,7 +118,9 @@ $stmt_daily = $conn->prepare("
         SUM(paket_soju) as sum_soju_daily,
         SUM(paket_spicy_1) as sum_spicy_1_daily,
         SUM(paket_spicy_2) as sum_spicy_2_daily,
-        SUM(paket_spicy_3) as sum_spicy_3_daily
+        SUM(paket_spicy_3) as sum_spicy_3_daily,
+        COALESCE(SUM(paket_vip_person), 0) as sum_vip_daily,      /* NEW */
+        COALESCE(SUM(paket_special_30min), 0) as sum_special_daily /* NEW */
     FROM sales_data
     WHERE date BETWEEN ? AND ?
     GROUP BY date
@@ -115,7 +139,9 @@ if ($stmt_daily) {
                                              (float) ($row['sum_soju_daily'] * $price_soju) +
                                              (float) ($row['sum_spicy_1_daily'] * $price_spicy_1) +
                                              (float) ($row['sum_spicy_2_daily'] * $price_spicy_2) +
-                                             (float) ($row['sum_spicy_3_daily'] * $price_spicy_3);
+                                             (float) ($row['sum_spicy_3_daily'] * $price_spicy_3) +
+                                             (float) ($row['sum_vip_daily'] * $price_vip_person) +     /* NEW CALCULATION */
+                                             (float) ($row['sum_special_daily'] * $price_special_30min); /* NEW CALCULATION */
     }
     $stmt_daily->close();
 } else {
@@ -152,6 +178,8 @@ $stmt_logs = $conn->prepare("
         sd.paket_spicy_1,
         sd.paket_spicy_2,
         sd.paket_spicy_3,
+        sd.paket_vip_person,         /* NEW */
+        sd.paket_special_30min,      /* NEW */
         e.name as employee_name
     FROM sales_data sd
     JOIN employees e ON sd.employee_id = e.id
@@ -169,7 +197,10 @@ if ($stmt_logs) {
                              ($row['paket_soju'] * $price_soju) +
                              ($row['paket_spicy_1'] * $price_spicy_1) +
                              ($row['paket_spicy_2'] * $price_spicy_2) +
-                             ($row['paket_spicy_3'] * $price_spicy_3);
+                             ($row['paket_spicy_3'] * $price_spicy_3) +
+                             // NEW OMSET CALCULATION
+                             (($row['paket_vip_person'] ?? 0) * $price_vip_person) +
+                             (($row['paket_special_30min'] ?? 0) * $price_special_30min);
         
         $omset_logs[] = [
             'id' => $row['id'],
@@ -182,6 +213,8 @@ if ($stmt_logs) {
             'paket_spicy_1' => $row['paket_spicy_1'],
             'paket_spicy_2' => $row['paket_spicy_2'],
             'paket_spicy_3' => $row['paket_spicy_3'],
+            'paket_vip_person' => $row['paket_vip_person'] ?? 0,      /* NEW */
+            'paket_special_30min' => $row['paket_special_30min'] ?? 0, /* NEW */
             'omset_transaksi' => $transaction_omset
         ];
     }
@@ -213,6 +246,8 @@ if (isset($_GET['export']) && $_GET['export'] == 'detailed_income') {
         'Spicy 1 (Jumlah)',
         'Spicy 2 (Jumlah)',
         'Spicy 3 (Jumlah)',
+        'Ruangan VIP (Org)',        /* NEW HEADER */
+        'Ruangan Spesial (30m)',    /* NEW HEADER */
         'Omset Transaksi (Rp)'
     ];
     fputcsv($output, $headers);
@@ -229,6 +264,8 @@ if (isset($_GET['export']) && $_GET['export'] == 'detailed_income') {
             $log['paket_spicy_1'],
             $log['paket_spicy_2'],
             $log['paket_spicy_3'],
+            $log['paket_vip_person'],       /* NEW DATA */
+            $log['paket_special_30min'],    /* NEW DATA */
             $log['omset_transaksi']
         ];
         fputcsv($output, $data_row);
@@ -444,7 +481,7 @@ function formatRupiah($amount) {
                     <span class="page-icon">📈</span>
                     Laporan Pemasukan
                 </h1>
-                <p>Ikhtisar total pemasukan dari penjualan paket makan minum.</p>
+                <p>Ikhtisar total pemasukan dari penjualan paket makan minum dan ruangan.</p>
                 <div class="page-actions" style="margin-top: var(--spacing-md);">
                     <a href="income-report.php?export=detailed_income" class="btn btn-info" target="_blank">
                         <span class="btn-icon">⬇️</span>
@@ -503,11 +540,24 @@ function formatRupiah($amount) {
                     <p class="detail-text"><?= $total_spicy_3_packages ?> paket @ <?= formatRupiah($price_spicy_3) ?></p>
                 </div>
 
-                <div class="income-card total">
+                <div class="income-card" style="border-left: 4px solid var(--info-color);">
+                    <div class="icon" style="color: var(--info-color);">👥</div>
+                    <h4>Pemasukan Ruangan VIP</h4>
+                    <p class="value"><?= formatRupiah($total_income_vip) ?></p>
+                    <p class="detail-text"><?= $total_vip_packages ?> orang @ <?= formatRupiah($price_vip_person) ?></p>
+                </div>
+                
+                <div class="income-card" style="border-left: 4px solid var(--info-color);">
+                    <div class="icon" style="color: var(--info-color);">⏰</div>
+                    <h4>Pemasukan Ruangan Spesial</h4>
+                    <p class="value"><?= formatRupiah($total_income_special) ?></p>
+                    <p class="detail-text"><?= $total_special_packages ?> sesi (30m) @ <?= formatRupiah($price_special_30min) ?></p>
+                </div>
+                <div class="income-card total" style="grid-column: 1 / -1; max-width: 50%; margin: 0 auto;">
                     <div class="icon" style="color: var(--success-color);">💰</div>
                     <h4>Total Pemasukan Keseluruhan</h4>
                     <p class="value"><?= formatRupiah($overall_total_income) ?></p>
-                    <p class="detail-text">Gabungan dari semua penjualan paket</p>
+                    <p class="detail-text">Gabungan dari semua penjualan paket dan ruangan</p>
                 </div>
             </div>
 
@@ -539,7 +589,7 @@ function formatRupiah($amount) {
                                         <th>Spicy 1</th>
                                         <th>Spicy 2</th>
                                         <th>Spicy 3</th>
-                                        <th>Omset Transaksi</th>
+                                        <th>Ruangan VIP (Org)</th>    <th>Ruangan Spesial (30m)</th> <th>Omset Transaksi</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -554,7 +604,7 @@ function formatRupiah($amount) {
                                         <td data-label="Spicy 1"><?= $log['paket_spicy_1'] ?></td>
                                         <td data-label="Spicy 2"><?= $log['paket_spicy_2'] ?></td>
                                         <td data-label="Spicy 3"><?= $log['paket_spicy_3'] ?></td>
-                                        <td data-label="Omset Transaksi"><?= formatRupiah($log['omset_transaksi']) ?></td>
+                                        <td data-label="Ruangan VIP (Org)"><?= $log['paket_vip_person'] ?></td>       <td data-label="Ruangan Spesial (30m)"><?= $log['paket_special_30min'] ?></td> <td data-label="Omset Transaksi"><?= formatRupiah($log['omset_transaksi']) ?></td>
                                     </tr>
                                     <?php endforeach; ?>
                                 </tbody>

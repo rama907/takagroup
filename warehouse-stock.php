@@ -383,6 +383,9 @@ if ($is_manager_or_higher) {
                     <h3>Deposit/Withdraw Stok (Multi-Item)</h3>
                 </div>
                 <div class="card-content">
+                    <div class="info-message" style="margin-bottom: var(--spacing-xl);">
+                        <strong>Penting:</strong> Jumlah yang dimasukkan adalah **jumlah per item/botol** yang masuk (Deposit) atau keluar (Withdraw) dari stok gudang.
+                    </div>
                     <form method="POST">
                         <div class="stock-multi-input-grid">
                             <?php foreach ($stock_levels as $stock): ?>

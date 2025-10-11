@@ -88,6 +88,7 @@ if (($_SERVER['REQUEST_METHOD'] === 'POST') && (isset($_POST['action']) && $_POS
                     'paket_spicy_1' => $entry_details['paket_spicy_1'] ?? 0,
                     'paket_spicy_2' => $entry_details['paket_spicy_2'] ?? 0,
                     'paket_spicy_3' => $entry_details['paket_spicy_3'] ?? 0,
+
                 ], 'sale_deleted');
 
             } else {
@@ -115,11 +116,12 @@ if (isset($_GET['msg']) && isset($_GET['type'])) {
     }
 }
 
-// Handle form submission
+// --- START: MODIFIKASI PHP UNTUK PENJUALAN RUANGAN ---
 if (($_SERVER['REQUEST_METHOD'] === 'POST') && (isset($_POST['action']) && $_POST['action'] === 'update_sales')) {
     $employee_id_from_form = (int)($_POST['employee_id'] ?? $user['id']);
     $date_input = $_POST['date'] ?? '';
 
+    // Penjualan Paketan
     $paket_sake = (int)($_POST['paket_sake'] ?? 0);
     $paket_anggur_merah = (int)($_POST['paket_anggur_merah'] ?? 0);
     $paket_tuak = (int)($_POST['paket_tuak'] ?? 0);
@@ -128,6 +130,10 @@ if (($_SERVER['REQUEST_METHOD'] === 'POST') && (isset($_POST['action']) && $_POS
     $paket_spicy_1 = $is_director_level ? (int)($_POST['paket_spicy_1'] ?? 0) : 0;
     $paket_spicy_2 = $is_director_level ? (int)($_POST['paket_spicy_2'] ?? 0) : 0;
     $paket_spicy_3 = $is_director_level ? (int)($_POST['paket_spicy_3'] ?? 0) : 0;
+    
+    // Penjualan Ruangan (NEW VARIABLES)
+    $paket_vip_person = (int)($_POST['paket_vip_person'] ?? 0); // Jumlah orang di Ruangan VIP
+    $paket_special_30min = (int)($_POST['paket_special_30min'] ?? 0); // Jumlah 30 menit sesi Ruangan Spesial
     
     $error_message = null; 
 
@@ -182,16 +188,18 @@ if (($_SERVER['REQUEST_METHOD'] === 'POST') && (isset($_POST['action']) && $_POS
     $input_time = date('Y-m-d H:i:s'); 
     
     try {
+        // PERHATIAN: Asumsi kolom 'paket_vip_person' dan 'paket_special_30min' sudah ada di tabel sales_data
         $stmt = $conn->prepare("
             INSERT INTO sales_data (
                 employee_id, date, input_time, week_number, year, 
                 paket_sake, paket_anggur_merah, paket_tuak, paket_soju,
-                paket_spicy_1, paket_spicy_2, paket_spicy_3
+                paket_spicy_1, paket_spicy_2, paket_spicy_3,
+                paket_vip_person, paket_special_30min
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
         
-        $stmt->bind_param("isssiiiiiiii", 
+        $stmt->bind_param("isssiiiiiiiiii", 
             $employee_id_from_form, 
             $formatted_date, 
             $input_time,
@@ -203,7 +211,9 @@ if (($_SERVER['REQUEST_METHOD'] === 'POST') && (isset($_POST['action']) && $_POS
             $paket_soju,
             $paket_spicy_1,
             $paket_spicy_2,
-            $paket_spicy_3
+            $paket_spicy_3,
+            $paket_vip_person,         // NEW
+            $paket_special_30min       // NEW
         );
         
         $result = $stmt->execute();
@@ -224,7 +234,9 @@ if (($_SERVER['REQUEST_METHOD'] === 'POST') && (isset($_POST['action']) && $_POS
                 'paket_soju' => $paket_soju,
                 'paket_spicy_1' => $paket_spicy_1,
                 'paket_spicy_2' => $paket_spicy_2,
-                'paket_spicy_3' => $paket_spicy_3
+                'paket_spicy_3' => $paket_spicy_3,
+                'paket_vip_person' => $paket_vip_person,
+                'paket_special_30min' => $paket_special_30min
             ], 'sale_input');
             
             header("Location: " . $_SERVER['PHP_SELF'] . "?msg=" . urlencode($success_message) . "&type=success" . "&employee_id=" . $employee_id_to_submit);
@@ -250,6 +262,8 @@ $overall_sales_summary = [
     'paket_spicy_1' => 0,
     'paket_spicy_2' => 0,
     'paket_spicy_3' => 0,
+    'paket_vip_person' => 0,        // NEW
+    'paket_special_30min' => 0,     // NEW
 ];
 $stmt = $conn->prepare("
     SELECT 
@@ -259,7 +273,9 @@ $stmt = $conn->prepare("
         SUM(paket_soju) as paket_soju,
         SUM(paket_spicy_1) as paket_spicy_1,
         SUM(paket_spicy_2) as paket_spicy_2,
-        SUM(paket_spicy_3) as paket_spicy_3
+        SUM(paket_spicy_3) as paket_spicy_3,
+        COALESCE(SUM(paket_vip_person), 0) as paket_vip_person,
+        COALESCE(SUM(paket_special_30min), 0) as paket_special_30min
     FROM sales_data 
     WHERE employee_id = ?
 ");
@@ -277,7 +293,7 @@ $total_overall_sales = array_sum($overall_sales_summary);
 $today = date('Y-m-d');
 $today_data = []; 
 $stmt = $conn->prepare("
-    SELECT *, TIME(input_time) as input_hour 
+    SELECT *
     FROM sales_data 
     WHERE employee_id = ? AND date = ? 
     ORDER BY input_time DESC
@@ -296,6 +312,8 @@ $daily_total = [
     'paket_spicy_1' => 0,
     'paket_spicy_2' => 0,
     'paket_spicy_3' => 0,
+    'paket_vip_person' => 0,
+    'paket_special_30min' => 0,
     'total_entries' => count($today_data)
 ];
 foreach ($today_data as $entry) {
@@ -306,6 +324,8 @@ foreach ($today_data as $entry) {
     $daily_total['paket_spicy_1'] += $entry['paket_spicy_1'];
     $daily_total['paket_spicy_2'] += $entry['paket_spicy_2'];
     $daily_total['paket_spicy_3'] += $entry['paket_spicy_3'];
+    $daily_total['paket_vip_person'] += $entry['paket_vip_person'];
+    $daily_total['paket_special_30min'] += $entry['paket_special_30min'];
 }
 
 
@@ -321,6 +341,7 @@ $stmt->bind_param("i", $employee_id_to_submit);
 $stmt->execute();
 $recent_sales = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt->close();
+// --- END: MODIFIKASI PHP UNTUK PENJUALAN RUANGAN ---
 
 ?>
 
@@ -376,6 +397,10 @@ $stmt->close();
             background-color: var(--danger-light);
             border-color: var(--danger-color);
         }
+        .product-card-room { /* NEW STYLE FOR ROOMS */
+            background-color: var(--info-light);
+            border-color: var(--info-color);
+        }
         .today-badge {
             background-color: var(--info-color);
             color: white;
@@ -384,6 +409,17 @@ $stmt->close();
             font-size: 0.75rem;
             margin-left: var(--spacing-sm);
             font-weight: 600;
+        }
+        .section-separator {
+            grid-column: 1 / -1;
+            margin-top: var(--spacing-xl);
+            margin-bottom: var(--spacing-lg);
+            padding-bottom: var(--spacing-md);
+            border-bottom: 2px solid var(--primary-color);
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--primary-color);
+            text-transform: uppercase;
         }
     </style>
 </head>
@@ -413,7 +449,7 @@ $stmt->close();
                 <div class="card-header">
                     <h3>Ringkasan Input Penjualan</h3>
                     <span class="entry-count">
-                        <?= $total_overall_sales ?? 0 ?> Total Paket
+                        <?= $total_overall_sales ?? 0 ?> Total Transaksi
                     </span>
                 </div>
                 <div class="card-content">
@@ -448,7 +484,16 @@ $stmt->close();
                             <span class="stat-value" style="font-size: 1.2em;"><?= $overall_sales_summary['paket_spicy_3'] ?? 0 ?></span>
                         </div>
                         <?php endif; ?>
-                    </div>
+                        
+                        <div class="stat-item" style="border: 1px solid var(--info-color);">
+                            <span class="stat-label">RUANGAN VIP (ORANG)</span>
+                            <span class="stat-value" style="font-size: 1.2em; color: var(--info-color);"><?= $overall_sales_summary['paket_vip_person'] ?? 0 ?></span>
+                        </div>
+                        <div class="stat-item" style="border: 1px solid var(--info-color);">
+                            <span class="stat-label">RUANGAN SPESIAL (30 MIN)</span>
+                            <span class="stat-value" style="font-size: 1.2em; color: var(--info-color);"><?= $overall_sales_summary['paket_special_30min'] ?? 0 ?></span>
+                        </div>
+                        </div>
                 </div>
             </div>
 
@@ -456,11 +501,16 @@ $stmt->close();
                 <div class="card-header">
                     <h3>Input Data Penjualan</h3>
                     <div class="current-time">
-                        <span class="time-icon">🕐</span>
+                        <span class="time-icon">⏰</span>
                         <span id="current-time"><?= date('H:i:s') ?></span>
                     </div>
                 </div>
                 <div class="card-content">
+                    
+                    <div class="info-message" style="margin-bottom: var(--spacing-xl);">
+                        <strong>Penting:</strong> Jumlah yang dimasukkan adalah **jumlah paket/satuan layanan yang terjual**, BUKAN jumlah item/botol yang dikeluarkan dari stok.
+                    </div>
+                    
                     <form method="POST" class="sales-form" id="sales-form">
                         <input type="hidden" name="action" value="update_sales">
                         <input type="hidden" id="employee_role" value="<?= htmlspecialchars($selected_employee_role) ?>">
@@ -498,11 +548,13 @@ $stmt->close();
                         </div>
                         
                         <div class="sales-input-grid">
+                            
+                            <div class="section-separator">Penjualan Paketan</div>
                             <div class="product-card">
                                 <label for="paket_sake">SAKE</label>
                                 <p>$20,000.00</p>
                                 <div class="quantity-group">
-                                    <label for="paket_sake">Quantity</label>
+                                    <label for="paket_sake">Paket</label>
                                     <input type="number" name="paket_sake" id="paket_sake" value="0" min="0">
                                 </div>
                             </div>
@@ -510,7 +562,7 @@ $stmt->close();
                                 <label for="paket_anggur_merah">ANGGUR MERAH</label>
                                 <p>$20,000.00</p>
                                 <div class="quantity-group">
-                                    <label for="paket_anggur_merah">Quantity</label>
+                                    <label for="paket_anggur_merah">Paket</label>
                                     <input type="number" name="paket_anggur_merah" id="paket_anggur_merah" value="0" min="0">
                                 </div>
                             </div>
@@ -518,7 +570,7 @@ $stmt->close();
                                 <label for="paket_tuak">TUAK</label>
                                 <p>$20,000.00</p>
                                 <div class="quantity-group">
-                                    <label for="paket_tuak">Quantity</label>
+                                    <label for="paket_tuak">Paket</label>
                                     <input type="number" name="paket_tuak" id="paket_tuak" value="0" min="0">
                                 </div>
                             </div>
@@ -526,7 +578,7 @@ $stmt->close();
                                 <label for="paket_soju">SOJU</label>
                                 <p>$20,000.00</p>
                                 <div class="quantity-group">
-                                    <label for="paket_soju">Quantity</label>
+                                    <label for="paket_soju">Paket</label>
                                     <input type="number" name="paket_soju" id="paket_soju" value="0" min="0">
                                 </div>
                             </div>
@@ -536,7 +588,7 @@ $stmt->close();
                                 <label for="paket_spicy_1">SPICY 1</label>
                                 <p>$65,000.00</p>
                                 <div class="quantity-group">
-                                    <label for="paket_spicy_1">Quantity</label>
+                                    <label for="paket_spicy_1">Paket</label>
                                     <input type="number" name="paket_spicy_1" id="paket_spicy_1" value="0" min="0">
                                 </div>
                             </div>
@@ -544,7 +596,7 @@ $stmt->close();
                                 <label for="paket_spicy_2">SPICY 2</label>
                                 <p>$45,000.00</p>
                                 <div class="quantity-group">
-                                    <label for="paket_spicy_2">Quantity</label>
+                                    <label for="paket_spicy_2">Paket</label>
                                     <input type="number" name="paket_spicy_2" id="paket_spicy_2" value="0" min="0">
                                 </div>
                             </div>
@@ -552,12 +604,31 @@ $stmt->close();
                                 <label for="paket_spicy_3">SPICY 3</label>
                                 <p>$35,000.00</p>
                                 <div class="quantity-group">
-                                    <label for="paket_spicy_3">Quantity</label>
+                                    <label for="paket_spicy_3">Paket</label>
                                     <input type="number" name="paket_spicy_3" id="paket_spicy_3" value="0" min="0">
                                 </div>
                             </div>
                             <?php endif; ?>
-                        </div>
+
+                            <div class="section-separator" style="border-bottom-color: var(--info-color);">Penjualan Ruangan</div>
+                            
+                            <div class="product-card product-card-room">
+                                <label for="paket_vip_person">RUANGAN VIP</label>
+                                <p>$ 50,000.00 / Orang</p>
+                                <div class="quantity-group">
+                                    <label for="paket_vip_person">Jumlah Orang</label>
+                                    <input type="number" name="paket_vip_person" id="paket_vip_person" value="0" min="0">
+                                </div>
+                            </div>
+                            <div class="product-card product-card-room">
+                                <label for="paket_special_30min">RUANGAN SPESIAL</label>
+                                <p>$ 350,000.00 / 30 Menit</p>
+                                <div class="quantity-group">
+                                    <label for="paket_special_30min">Sesi (30 Menit)</label>
+                                    <input type="number" name="paket_special_30min" id="paket_special_30min" value="0" min="0">
+                                </div>
+                            </div>
+                            </div>
                         
                         <div class="form-actions">
                             <button type="submit" class="btn btn-primary" id="submit-btn">
@@ -590,6 +661,8 @@ $stmt->close();
                                         <th>Spicy 1</th>
                                         <th>Spicy 2</th>
                                         <th>Spicy 3</th>
+                                        <th>Ruangan VIP (Orang)</th>
+                                        <th>Ruangan Spesial (30 Menit)</th>
                                         <th>Aksi</th>
                                     </tr>
                                 </thead>
@@ -614,6 +687,8 @@ $stmt->close();
                                         <td data-label="Spicy 1"><?= $sale['paket_spicy_1'] ?></td>
                                         <td data-label="Spicy 2"><?= $sale['paket_spicy_2'] ?></td>
                                         <td data-label="Spicy 3"><?= $sale['paket_spicy_3'] ?></td>
+                                        <td data-label="Ruangan VIP (Orang)"><?= $sale['paket_vip_person'] ?? 0 ?></td>
+                                        <td data-label="Ruangan Spesial (30 Menit)"><?= $sale['paket_special_30min'] ?? 0 ?></td>
                                         <td data-label="Aksi">
                                             <form method="POST" onsubmit="return confirm('Yakin ingin menghapus entri penjualan ini? Aksi ini TIDAK DAPAT DIBATALKAN.')">
                                                 <input type="hidden" name="action" value="delete_sales_entry">

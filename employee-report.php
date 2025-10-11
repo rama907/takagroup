@@ -77,7 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['search'])) {
             $summary_totals['warehouse']['details'][$product][$type] += $qty;
         }
 
-        // --- 3. Fetch Sales Details ---
+        // --- 3. Fetch Sales Details (UPDATED to include new room sales) ---
         $stmt_sales = $conn->prepare("
             SELECT 
                 input_time,
@@ -87,7 +87,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['search'])) {
                 paket_soju,
                 paket_spicy_1,
                 paket_spicy_2,
-                paket_spicy_3
+                paket_spicy_3,
+                paket_vip_person,         /* NEW */
+                paket_special_30min       /* NEW */
             FROM sales_data
             WHERE employee_id = ? AND date = ?
             ORDER BY input_time ASC
@@ -97,7 +99,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['search'])) {
         $sales_details = $stmt_sales->get_result()->fetch_all(MYSQLI_ASSOC);
         $stmt_sales->close();
 
-        // Calculate Sales Summary
+        // Calculate Sales Summary (UPDATED to include new room sales)
         $sales_products = [
             'Sake' => 'paket_sake', 
             'Anggur Merah' => 'paket_anggur_merah', 
@@ -105,7 +107,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['search'])) {
             'Soju' => 'paket_soju', 
             'Spicy 1' => 'paket_spicy_1', 
             'Spicy 2' => 'paket_spicy_2', 
-            'Spicy 3' => 'paket_spicy_3'
+            'Spicy 3' => 'paket_spicy_3',
+            'Ruangan VIP (Orang)' => 'paket_vip_person',      /* NEW */
+            'Ruangan Spesial (30 Menit)' => 'paket_special_30min' /* NEW */
         ];
         
         $total_sales_qty = 0;
@@ -295,7 +299,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['search'])) {
             <div class="report-results-section">
                 <div class="summary-grid">
                     <div class="summary-card-small" style="border-left: 4px solid var(--primary-color);">
-                        <h4>Total Penjualan Paket</h4>
+                        <h4>Total Penjualan Paket & Ruangan</h4>
                         <p class="value" style="color: var(--primary-color);"><?= $summary_totals['sales']['total'] ?></p>
                         <div class="summary-card-detail sales-detail">
                             <?php 
@@ -433,13 +437,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['search'])) {
                                         <p><strong>Waktu Input:</strong> <?= date('H:i:s', strtotime($sale_entry['input_time'])) ?></p>
                                         <p><strong>Detail Penjualan:</strong></p>
                                         <ul>
-                                            <?php if ($sale_entry['paket_sake'] > 0): ?><li>Sake: <?= $sale_entry['paket_sake'] ?></li><?php endif; ?>
-                                            <?php if ($sale_entry['paket_anggur_merah'] > 0): ?><li>Anggur Merah: <?= $sale_entry['paket_anggur_merah'] ?></li><?php endif; ?>
-                                            <?php if ($sale_entry['paket_tuak'] > 0): ?><li>Tuak: <?= $sale_entry['paket_tuak'] ?></li><?php endif; ?>
-                                            <?php if ($sale_entry['paket_soju'] > 0): ?><li>Soju: <?= $sale_entry['paket_soju'] ?></li><?php endif; ?>
-                                            <?php if ($sale_entry['paket_spicy_1'] > 0): ?><li>Spicy 1: <?= $sale_entry['paket_spicy_1'] ?></li><?php endif; ?>
-                                            <?php if ($sale_entry['paket_spicy_2'] > 0): ?><li>Spicy 2: <?= $sale_entry['paket_spicy_2'] ?></li><?php endif; ?>
-                                            <?php if ($sale_entry['paket_spicy_3'] > 0): ?><li>Spicy 3: <?= $sale_entry['paket_spicy_3'] ?></li><?php endif; ?>
+                                            <?php if ($sale_entry['paket_sake'] > 0): ?><li>Sake: <?= $sale_entry['paket_sake'] ?> Paket</li><?php endif; ?>
+                                            <?php if ($sale_entry['paket_anggur_merah'] > 0): ?><li>Anggur Merah: <?= $sale_entry['paket_anggur_merah'] ?> Paket</li><?php endif; ?>
+                                            <?php if ($sale_entry['paket_tuak'] > 0): ?><li>Tuak: <?= $sale_entry['paket_tuak'] ?> Paket</li><?php endif; ?>
+                                            <?php if ($sale_entry['paket_soju'] > 0): ?><li>Soju: <?= $sale_entry['paket_soju'] ?> Paket</li><?php endif; ?>
+                                            <?php if ($sale_entry['paket_spicy_1'] > 0): ?><li>Spicy 1: <?= $sale_entry['paket_spicy_1'] ?> Paket</li><?php endif; ?>
+                                            <?php if ($sale_entry['paket_spicy_2'] > 0): ?><li>Spicy 2: <?= $sale_entry['paket_spicy_2'] ?> Paket</li><?php endif; ?>
+                                            <?php if ($sale_entry['paket_spicy_3'] > 0): ?><li>Spicy 3: <?= $sale_entry['paket_spicy_3'] ?> Paket</li><?php endif; ?>
+                                            <?php if (($sale_entry['paket_vip_person'] ?? 0) > 0): ?><li>Ruangan VIP: <?= $sale_entry['paket_vip_person'] ?> Orang</li><?php endif; ?> 
+                                            <?php if (($sale_entry['paket_special_30min'] ?? 0) > 0): ?><li>Ruangan Spesial: <?= $sale_entry['paket_special_30min'] ?> Sesi (30m)</li><?php endif; ?>
                                         </ul>
                                     </div>
                                 <?php endforeach; ?>

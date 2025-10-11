@@ -58,8 +58,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     }
 }
 
-// Get all rooms for display
-$rooms = $conn->query("SELECT * FROM rooms ORDER BY id ASC")->fetch_all(MYSQLI_ASSOC);
+// --- Function to fetch room data including multiple images ---
+$rooms_data = [];
+$rooms_result = $conn->query("SELECT id, room_name, description, price_info, facilities, rules FROM rooms ORDER BY id ASC");
+
+if ($rooms_result) {
+    while ($room = $rooms_result->fetch_assoc()) {
+        $room_id = $room['id'];
+        
+        // Fetch all images for this room
+        $images_result_stmt = $conn->prepare("SELECT image_path FROM room_images WHERE room_id = ? ORDER BY sort_order ASC, id ASC");
+        
+        if ($images_result_stmt) {
+            $images_result_stmt->bind_param("i", $room_id);
+            $images_result_stmt->execute();
+            $room['images'] = $images_result_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+            $images_result_stmt->close();
+        } else {
+            // Jika tabel belum ada (menyebabkan Fatal Error sebelumnya)
+            $room['images'] = [];
+        }
+        
+        $rooms_data[] = $room;
+    }
+}
+// --- END FUNCTION ---
 ?>
 
 <!DOCTYPE html>
@@ -72,62 +95,200 @@ $rooms = $conn->query("SELECT * FROM rooms ORDER BY id ASC")->fetch_all(MYSQLI_A
     <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
     <link rel="stylesheet" href="style.css">
     <style>
+        /* Perbaikan Layout Utama */
         .centered-page-container {
             display: flex;
             justify-content: center;
-            align-items: center;
             min-height: 100vh;
-            padding: 20px;
+            padding: 20px 0; 
+            width: 100%;
         }
         .page-content-wrapper {
-            max-width: 900px;
+            max-width: 1200px; 
             width: 100%;
             display: flex;
             flex-direction: column;
-            gap: 20px;
+            gap: 30px;
+            padding: 0 20px; 
         }
+        
+        /* Header yang lebih elegan */
+        .page-header {
+            text-align: center;
+            padding: var(--spacing-xl);
+            background: var(--bg-card);
+            border-radius: var(--radius-2xl);
+            box-shadow: var(--shadow-md);
+        }
+        .page-header h1 {
+            justify-content: center; 
+            font-size: 2rem;
+            margin-bottom: var(--spacing-sm);
+        }
+        .page-header p {
+            color: var(--text-secondary);
+            font-size: 1rem;
+            margin: 0 auto; 
+            max-width: 600px;
+        }
+        .page-header .page-icon {
+            background: none;
+            padding: 0;
+        }
+
+        /* Grid Ruangan */
         .public-booking-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: var(--spacing-xl);
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: var(--spacing-lg); 
         }
+
+        /* Card Ruangan yang Ditingkatkan */
         .room-card {
-            background: var(--bg-card);
+            background: linear-gradient(145deg, var(--bg-card), var(--bg-secondary));
             border: 1px solid var(--border-color);
             border-radius: var(--radius-2xl);
             box-shadow: var(--shadow-md);
+            padding: 0;
+            overflow: hidden; 
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .room-card:hover {
+             transform: translateY(-5px);
+             box-shadow: var(--shadow-lg);
+        }
+        
+        /* Header Ruangan */
+        .room-header {
+            padding: var(--spacing-lg) var(--spacing-xl);
+            background: var(--bg-tertiary);
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .room-header h3 {
+            color: var(--primary-color);
+            margin: 0;
+            font-size: 1.6rem;
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-md);
+            font-weight: 700;
+        }
+        
+        /* Blok Informasi */
+        .room-info-block {
             padding: var(--spacing-xl);
         }
-        .room-card h3 {
-            font-size: 1.5rem;
-            font-weight: 700;
+        
+        .info-item-box {
+            background: var(--bg-secondary);
+            border-radius: var(--radius-lg);
+            padding: var(--spacing-md);
             margin-bottom: var(--spacing-md);
-            color: var(--primary-color);
+            border-left: 4px solid var(--primary-color);
         }
-        .room-card .price-info {
-            font-size: 1rem;
-            font-weight: 600;
+        
+        .info-item-box strong {
+            display: block;
+            font-size: 0.9rem;
             color: var(--text-primary);
-            margin-bottom: var(--spacing-md);
+            margin-bottom: 0.25rem;
+            font-weight: 700;
+            text-transform: uppercase;
         }
-        .room-card .details-list {
-            list-style: none;
-            padding: 0;
-            margin: 0 0 var(--spacing-xl) 0;
-        }
-        .room-card .details-list li {
-            margin-bottom: var(--spacing-xs);
+        
+        .info-item-box p {
+            margin: 0;
+            font-size: 0.9rem;
             color: var(--text-secondary);
+            white-space: pre-wrap; 
         }
+
+        /* Bagian Gambar - Gallery Container */
+        .room-image-container {
+            width: 100%; 
+            height: 250px; 
+            overflow: hidden;
+            margin: var(--spacing-xl) 0;
+            position: relative;
+        }
+        
+        /* Gallery CSS */
+        .image-gallery-wrapper {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            transform: translateZ(0); 
+        }
+        
+        .gallery-image {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            position: absolute;
+            top: 0;
+            left: 0;
+            opacity: 0;
+            transition: opacity 1s ease-in-out;
+        }
+        
+        /* Formulir */
+        .booking-form {
+            padding: var(--spacing-xl);
+            border-top: 1px solid var(--border-color);
+        }
+
         .booking-form .form-group {
-            margin-bottom: var(--spacing-md);
+            margin-bottom: var(--spacing-lg);
         }
-        .booking-form .form-row {
-            display: flex;
-            gap: var(--spacing-md);
+
+        .booking-form .form-input,
+        .booking-form .form-textarea {
+            border: 1px solid var(--border-light);
+            background: var(--bg-card);
+            width: 100%; 
+            box-sizing: border-box;
         }
-        .booking-form .form-row .form-group {
-            flex: 1;
+        
+        .form-row {
+             /* FIX: Menggunakan grid untuk layout 2 kolom */
+             display: grid;
+             grid-template-columns: 1fr 1fr;
+             gap: var(--spacing-md);
+        }
+        
+        /* Mobile Responsif */
+        @media (max-width: 600px) {
+            .page-content-wrapper {
+                padding: 0 10px;
+            }
+            .form-row {
+                /* FIX: Kembali ke 1 kolom di mobile untuk menghindari pemotongan */
+                grid-template-columns: 1fr;
+            }
+            
+            /* FIX: Memastikan input di form-row mengambil lebar penuh di layout 1 kolom */
+            .form-row .form-group {
+                width: 100%;
+            }
+            .form-row .form-group .form-input {
+                width: 100%;
+            }
+
+            .room-image-container {
+                height: 180px;
+            }
+            .room-header h3 {
+                font-size: 1.4rem;
+            }
+        }
+        
+        /* Styling untuk tombol pesan agar full width */
+        .booking-form .btn-primary {
+            width: 100%;
+            font-size: 1rem;
+            padding: var(--spacing-md) var(--spacing-xl);
+            margin-top: var(--spacing-lg);
         }
     </style>
 </head>
@@ -141,7 +302,23 @@ $rooms = $conn->query("SELECT * FROM rooms ORDER BY id ASC")->fetch_all(MYSQLI_A
                         Booking Ruangan Elysium Night Club
                     </h1>
                     <p>Lihat detail ruangan dan ajukan pemesanan. Kami akan segera menghubungi Anda untuk konfirmasi.</p>
-                </div>
+                    
+                    <div style="margin-top: 25px; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 0 10px;">
+                        
+                        <div class="info-item-box" style="border-left-color: var(--info-color); background: var(--bg-secondary); padding: 10px 20px; text-align: left; width: 100%; max-width: 500px;">
+                            <strong>Katalog Elysium:</strong> Di dalamnya terdapat informasi lengkap mengenai **TNC** (Syarat & Ketentuan) dan **Katalog Talent** yang tersedia.
+                        </div>
+
+                        <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; width: 100%;">
+                            <a href="https://elysium-night-club.my.canva.site/" target="_blank" class="btn btn-info btn-sm">
+                                <span class="btn-icon">📚</span> Katalog Elysium
+                            </a>
+                            <a href="manage-public-booking.php" class="btn btn-warning btn-sm">
+                                <span class="btn-icon">⚙️</span> Admin Login
+                            </a>
+                        </div>
+                    </div>
+                    </div>
 
                 <?php if (isset($success)): ?>
                     <div class="success-message">🎉 <?= htmlspecialchars($success) ?></div>
@@ -152,44 +329,75 @@ $rooms = $conn->query("SELECT * FROM rooms ORDER BY id ASC")->fetch_all(MYSQLI_A
                 <?php endif; ?>
     
                 <div class="public-booking-grid">
-                    <?php foreach ($rooms as $room): ?>
+                    <?php foreach ($rooms_data as $room): ?>
                     <div class="room-card">
-                        <h3><?= htmlspecialchars($room['room_name']) ?></h3>
-                        <p style="color: var(--text-muted);"><?= htmlspecialchars($room['description'] ?? '') ?></p>
-                        <div class="price-info">
-                            Harga: <?= htmlspecialchars($room['price_info'] ?? '') ?>
+                        
+                        <div class="room-header">
+                            <h3><?= htmlspecialchars($room['room_name']) ?></h3>
                         </div>
-                        <ul class="details-list">
-                            <li><strong>Fasilitas:</strong> <?= htmlspecialchars($room['facilities'] ?? 'N/A') ?></li>
-                            <li><strong>Ketentuan:</strong> <?= nl2br(htmlspecialchars($room['rules'] ?? 'Tidak ada ketentuan khusus.')) ?></li>
-                        </ul>
+
+                        <div class="room-info-block">
+                            <p style="color: var(--text-muted); margin-bottom: var(--spacing-lg);"><?= htmlspecialchars($room['description'] ?? '') ?></p>
+                            
+                            <div class="room-image-container">
+                                <div class="image-gallery-wrapper" id="gallery-<?= $room['id'] ?>">
+                                    <?php if (!empty($room['images'])): ?>
+                                        <?php foreach ($room['images'] as $index => $image): ?>
+                                            <img src="<?= htmlspecialchars($image['image_path']) ?>" 
+                                                 alt="Foto <?= htmlspecialchars($room['room_name']) ?> <?= $index + 1 ?>" 
+                                                 class="gallery-image" 
+                                                 style="opacity: <?= $index === 0 ? '1' : '0' ?>; z-index: <?= 10 - $index ?>;">
+                                        <?php endforeach; ?>
+                                    <?php else: ?>
+                                        <div style="background-color: var(--bg-tertiary); display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;">
+                                            <span style="color: var(--text-secondary);">[Image not available]</span>
+                                        </div>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+
+                            <div class="info-item-box" style="border-left-color: var(--success-color);">
+                                <strong>Harga</strong>
+                                <p><?= htmlspecialchars($room['price_info'] ?? 'Tanyakan kepada Admin') ?></p>
+                            </div>
+                            
+                            <div class="info-item-box">
+                                <strong>Fasilitas</strong>
+                                <p><?= htmlspecialchars($room['facilities'] ?? 'N/A') ?></p>
+                            </div>
+                            
+                            <div class="info-item-box" style="margin-bottom: 0;">
+                                <strong>Ketentuan</strong>
+                                <p><?= nl2br(htmlspecialchars($room['rules'] ?? 'Tidak ada ketentuan khusus.')) ?></p>
+                            </div>
+                        </div>
 
                         <form method="POST" class="booking-form">
                             <input type="hidden" name="action" value="book_room">
                             <input type="hidden" name="room_id" value="<?= $room['id'] ?>">
                             
                             <div class="form-group">
-                                <label for="booking_name_<?= $room['id'] ?>">Nama Anda</label>
+                                <label for="booking_name_<?= $room['id'] ?>">NAMA ANDA</label>
                                 <input type="text" name="booking_name" id="booking_name_<?= $room['id'] ?>" class="form-input" required>
                             </div>
                             
                             <div class="form-group">
-                                <label for="phone_number_<?= $room['id'] ?>">Nomor HP</label>
+                                <label for="phone_number_<?= $room['id'] ?>">NOMOR HP (Whatsapp Aktif)</label>
                                 <input type="tel" name="phone_number" id="phone_number_<?= $room['id'] ?>" class="form-input" placeholder="08xxxxxxxxxx" required>
                             </div>
                             
                             <div class="form-group">
-                                <label for="booking_purpose_<?= $room['id'] ?>">Tujuan Booking</label>
+                                <label for="booking_purpose_<?= $room['id'] ?>">TUJUAN BOOKING</label>
                                 <textarea name="booking_purpose" id="booking_purpose_<?= $room['id'] ?>" rows="2" class="form-textarea" placeholder="Contoh: Ulang tahun teman, meeting, dll."></textarea>
                             </div>
 
                             <div class="form-row">
-                                <div class="form-group">
-                                    <label for="booking_date_<?= $room['id'] ?>">Tanggal</label>
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label for="booking_date_<?= $room['id'] ?>">TANGGAL</label>
                                     <input type="date" name="booking_date" id="booking_date_<?= $room['id'] ?>" class="form-input" required>
                                 </div>
-                                <div class="form-group">
-                                    <label for="booking_time_<?= $room['id'] ?>">Jam</label>
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label for="booking_time_<?= $room['id'] ?>">JAM</label>
                                     <input type="time" name="booking_time" id="booking_time_<?= $room['id'] ?>" class="form-input" required>
                                 </div>
                             </div>
@@ -202,5 +410,24 @@ $rooms = $conn->query("SELECT * FROM rooms ORDER BY id ASC")->fetch_all(MYSQLI_A
             </div>
         </div>
     </main>
+    
+    <script>
+        // Simple JavaScript for Image Carousel/Gallery (Optional)
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('.image-gallery-wrapper').forEach(function(gallery) {
+                const images = gallery.querySelectorAll('.gallery-image');
+                let current = 0;
+                
+                if (images.length > 1) {
+                    setInterval(function() {
+                        images[current].style.opacity = 0;
+                        current = (current + 1) % images.length;
+                        images[current].style.opacity = 1;
+                    }, 5000); // Ganti gambar setiap 5 detik
+                }
+            });
+        });
+    </script>
+    <script src="script.js"></script>
 </body>
 </html>

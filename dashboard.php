@@ -270,7 +270,7 @@ if ($user['is_on_duty'] && $user['current_duty_start']) {
                 </a>
                 <a href="leave-request.php" class="btn btn-info">
                     <span class="btn-icon">📝</span>
-                    Cuti
+                    Izin
                 </a>
                 <a href="resignation-request.php" class="btn btn-danger">
                     <span class="btn-icon">📄</span>

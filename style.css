@@ -47,6 +47,8 @@
 
     /* Header specific variables - make it smaller */
     --header-height: 50px;
+    --sidebar-width-desktop: 280px; /* NEW variable for clarity */
+    --sidebar-width-mobile: 85vw; /* NEW variable for clarity */
 }
 
 [data-theme="dark"] {
@@ -88,6 +90,18 @@ body {
     line-height: 1.6;
     transition: all 0.3s ease;
     font-size: 14px;
+    overflow-x: hidden; /* FIX: Mencegah scroll horizontal dan bar hitam */
+}
+
+/* Ensure proper stacking order */
+.header {
+    z-index: 1000;
+}
+.sidebar {
+    z-index: 960;
+}
+.sidebar-overlay {
+    z-index: 950;
 }
 
 /* Ultra Compact Header */
@@ -98,7 +112,6 @@ body {
     box-shadow: var(--shadow-md);
     position: sticky;
     top: 0;
-    z-index: 1000;
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
@@ -135,6 +148,7 @@ body {
 .logo-text {
     font-size: 0.875rem;
     font-weight: 600;
+    display: none;
 }
 
 .header-actions {
@@ -191,19 +205,23 @@ body {
     font-size: 1rem;
 }
 
-/* Enhanced Sidebar - FIXED Z-INDEX */
+/* Enhanced Sidebar - OFF-CANVAS / MOBILE-FIRST */
 .sidebar {
     position: fixed;
     left: 0;
     top: var(--header-height);
-    width: 280px;
+    width: var(--sidebar-width-mobile); /* Mobile default width */
     height: calc(100vh - var(--header-height));
     background: var(--bg-card);
     border-right: 1px solid var(--border-color);
     overflow-y: auto;
-    z-index: 900;
     transition: transform 0.3s ease;
     box-shadow: var(--shadow-md);
+    transform: translateX(-100%); /* Hidden by default on mobile */
+}
+
+.sidebar.open {
+    transform: translateX(0); /* Visible when open */
 }
 
 .sidebar-content {
@@ -262,18 +280,38 @@ body {
     margin: var(--spacing-lg) 0;
 }
 
-/* Enhanced Main Content */
+/* Sidebar Overlay for Mobile/Offcanvas */
+.sidebar-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 950;
+    display: none;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.sidebar-overlay.active {
+    display: block;
+    opacity: 1;
+}
+
+/* Enhanced Main Content - MOBILE-FIRST */
 .main-content {
-    margin-left: 280px;
-    padding: var(--spacing-lg);
+    margin-left: 0; /* No margin on mobile */
+    padding: var(--spacing-md);
     min-height: calc(100vh - var(--header-height));
     background: var(--bg-secondary);
+    transition: margin-left 0.3s ease;
 }
 
 /* Summary Statistics Container */
 .summary-stats-container {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    grid-template-columns: 1fr; /* Default to stacking on mobile */
     gap: var(--spacing-lg);
     margin-bottom: var(--spacing-2xl);
 }
@@ -333,10 +371,9 @@ body {
     font-weight: 700;
     color: var(--primary-color);
     letter-spacing: -0.025em;
-    margin: 0;
 }
 
-/* Improved Table Styles */
+/* Improved Table Styles - MOBILE RESPONSIVENESS */
 .responsive-table-container {
     overflow-x: auto;
     border-radius: var(--radius-lg);
@@ -1373,6 +1410,7 @@ body {
     border-radius: var(--radius-xl);
     box-shadow: var(--shadow-sm);
     border: 1px solid var(--border-color);
+    overflow-x: auto; /* Allow horizontal scroll for tabs on small screens */
 }
 
 .tab-button {
@@ -1386,6 +1424,7 @@ body {
     font-weight: 600;
     font-size: 0.875rem;
     position: relative;
+    flex-shrink: 0; /* Prevent tabs from shrinking */
 }
 
 .tab-button.active,
@@ -2292,152 +2331,186 @@ body {
     opacity: 0.8;
 }
 
-/* Enhanced Mobile Responsiveness */
-@media (max-width: 1024px) {
-    .login-main {
-        flex-direction: column;
-        gap: var(--spacing-xl);
+/* ======================================================================= */
+/* === START: MOBILE-FIRST AND RESPONSIVE DESIGN ADJUSTMENTS === */
+/* ======================================================================= */
+
+/* 1. Mobile-First Default Styles (Applies to screens <= 1024px) */
+.dashboard-container {
+    display: flex;
+    flex-direction: column;
+}
+
+.header-left .logo-text {
+    display: none; /* Hide desktop logo text on mobile */
+}
+
+/* 2. Desktop Styles (Applies to screens > 1024px) */
+@media (min-width: 1025px) {
+    .sidebar {
+        /* Desktop Default State (Visible) */
+        width: var(--sidebar-width-desktop);
+        transform: translateX(0);
     }
 
-    .features-preview {
-        max-width: 100%;
+    .main-content {
+        /* Fixed margin for desktop */
+        margin-left: var(--sidebar-width-desktop);
+        padding: var(--spacing-xl) var(--spacing-2xl);
+    }
+
+    .sidebar-toggle {
+        /* Hide the toggle button on desktop */
+        display: none;
+    }
+
+    .header-left .logo-text {
+        /* Show desktop logo text */
+        display: inline;
+    }
+
+    /* Restore full grid layout for desktop */
+    .content-grid {
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    }
+    
+    .stats-grid-small {
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    }
+    
+    .employees-grid {
+        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    }
+
+    .summary-stats-container {
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    }
+}
+
+/* 3. General Mobile Styles (Applied to <= 768px for layout stacking) */
+@media (max-width: 768px) {
+    /* Layout Stacking */
+    .content-grid, .stats-grid {
+        grid-template-columns: 1fr;
+        gap: var(--spacing-lg);
+    }
+    
+    .card-content {
+        padding: var(--spacing-lg);
+    }
+
+    /* Actions */
+    .action-buttons {
+        flex-direction: column;
+        gap: var(--spacing-md);
+        padding: var(--spacing-lg);
+    }
+
+    .action-buttons .btn {
         width: 100%;
     }
-}
-
-@media (max-width: 768px) {
-    .login-header {
-        padding: var(--spacing-md);
-    }
-
-    .logo-large {
+    
+    .form-row {
+        grid-template-columns: 1fr;
         gap: var(--spacing-md);
     }
-
-    .logo-icon-large {
-        font-size: 2rem;
-        padding: var(--spacing-md);
-    }
-
-    .logo-text-large h1 {
+    
+    /* Header/Text Scaling */
+    .page-header h1 {
         font-size: 1.5rem;
     }
-
-    .logo-text-large p {
+    
+    .page-header p {
+        margin-left: 0;
+        margin-top: var(--spacing-sm);
         font-size: 0.875rem;
     }
-
-    .theme-toggle-login {
-        width: 40px;
-        height: 40px;
-        font-size: 1rem;
-    }
-
-    .login-main {
-        padding: var(--spacing-lg);
-    }
-
-    .login-card {
-        padding: var(--spacing-xl);
-    }
-
-    .login-card-header h2 {
+    
+    .page-icon {
         font-size: 1.5rem;
     }
 
-    .features-grid {
-        grid-template-columns: 1fr;
+    .header-content {
+        padding: 0 var(--spacing-sm);
+    }
+    
+    .logo {
+        font-size: 0.9rem;
+    }
+    
+    .user-name {
+        display: none; /* Hide user name on smallest screens */
     }
 
-    /* Enhanced mobile styles for password toggle */
-    .password-toggle {
-        width: 44px;
-        height: 44px;
-        font-size: 1.5rem;
-        right: var(--spacing-sm);
+    /* Table Responsiveness: Force table headers into data attributes */
+    .activities-table-improved thead {
+        display: none;
     }
 
-    .password-wrapper .form-input-login {
-        padding-right: 55px;
-    }
-}
-
-@media (max-width: 480px) {
-    .login-header {
-        padding: var(--spacing-sm);
+    .activities-table-improved, 
+    .activities-table-improved tbody, 
+    .activities-table-improved tr, 
+    .activities-table-improved td {
+        display: block;
+        width: 100%;
     }
 
-    .logo-large {
-        flex-direction: column;
-        text-align: center;
-        gap: var(--spacing-sm);
-    }
-
-    .login-header-content {
-        flex-direction: column;
-        gap: var(--spacing-md);
-    }
-
-    .login-main {
+    .activities-table-improved tr {
+        margin-bottom: var(--spacing-lg);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-lg);
         padding: var(--spacing-md);
     }
-
-    .login-card {
-        padding: var(--spacing-lg);
+    
+    .activities-table-improved td {
+        padding-left: 50%; /* Make room for the pseudo-element label */
+        text-align: right;
+        position: relative;
+        border-bottom: 1px solid var(--border-light);
+    }
+    
+    .activities-table-improved td:last-child {
+        border-bottom: none;
     }
 
-    .login-icon {
-        width: 60px;
-        height: 60px;
-        font-size: 1.5rem;
+    .activities-table-improved td::before {
+        /* Use data-label attribute defined in PHP for content */
+        content: attr(data-label);
+        position: absolute;
+        left: var(--spacing-md);
+        width: 45%;
+        padding-right: 10px;
+        white-space: nowrap;
+        font-weight: 700;
+        text-align: left;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        font-size: 0.75rem;
+    }
+    
+    .activities-table-improved .employee-name-cell,
+    .activities-table-improved .status-cell,
+    .activities-table-improved .action-column {
+        /* Center content within the right half of the table cell */
+        justify-content: flex-end;
     }
 
-    .login-card-header h2 {
-        font-size: 1.25rem;
+    .action-column {
+        flex-direction: row;
+        align-items: center;
+        flex-wrap: wrap;
+        padding-top: var(--spacing-sm);
     }
-
-    .form-select-login,
-    .form-input-login {
-        padding: var(--spacing-md) var(--spacing-lg);
+    
+    .action-column .btn {
+        flex-grow: 1;
+        min-width: 45%;
+        margin-bottom: 0;
     }
-
-    .btn-login {
-        padding: var(--spacing-md) var(--spacing-lg);
-    }
-
-    .features-preview {
-        padding: var(--spacing-lg);
-    }
+    
 }
+/* === END: MOBILE-FIRST AND RESPONSIVE DESIGN ADJUSTMENTS === */
 
-/* Enhanced Dark Mode Support for Login */
-[data-theme="dark"] .login-card {
-    background: rgba(0, 0, 0, 0.8);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-[data-theme="dark"] .login-info {
-    background: rgba(255, 193, 7, 0.1);
-    border-color: var(--info-color);
-}
-
-[data-theme="dark"] .login-info code {
-    background: rgba(255, 193, 7, 0.2);
-}
-
-[data-theme="dark"] .password-toggle {
-    color: var(--text-secondary);
-}
-
-[data-theme="dark"] .password-toggle:hover {
-    background: var(--bg-tertiary);
-    color: var(--primary-color);
-}
-
-[data-theme="dark"] .password-toggle.active {
-    background: var(--primary-light);
-    color: var(--primary-color);
-}
 
 /* Improved accessibility */
 .form-select-login:focus,
@@ -2461,23 +2534,6 @@ body {
     .login-container {
         background: white !important;
     }
-}
-
-/* Ensure proper stacking order - FIXED Z-INDEX */
-.header {
-    z-index: 1000;
-}
-
-.sidebar {
-    z-index: 960;
-}
-
-.sidebar-overlay {
-    z-index: 950;
-}
-
-.sidebar-toggle {
-    z-index: 1001;
 }
 
 /* Fix for iOS Safari */
@@ -2551,24 +2607,6 @@ body {
     box-shadow: var(--shadow-sm);
     animation: pulse 1.5s infinite;
     /* Efek berdenyut (sudah ada di style.css Anda) */
-}
-
-/* Pastikan animasi 'pulse' sudah ada di style.css Anda, jika belum, tambahkan: */
-@keyframes pulse {
-    0% {
-        transform: scale(1);
-        box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7);
-    }
-
-    70% {
-        transform: scale(1.05);
-        box-shadow: 0 0 0 10px rgba(220, 53, 69, 0);
-    }
-
-    100% {
-        transform: scale(1);
-        box-shadow: 0 0 0 0 rgba(220, 53, 69, 0);
-    }
 }
 
 /* Tambahan gaya untuk lencana surat peringatan */
@@ -2699,27 +2737,6 @@ body {
     font-weight: 700;
     font-size: 0.8rem;
     border-radius: 50%;
-    margin-left: var(--spacing-sm);
-}
-
-/* Mengatur agar nama anggota dan tanda seru bisa sejajar */
-.attendance-table .employee-name-cell {
-    display: flex;
-    align-items: center;
-    gap: 5px; /* Jarak antara nama dan tanda seru */
-}
-
-.long-absent-alert {
-    display: inline-flex;
-    justify-content: center;
-    align-items: center;
-    width: 20px;
-    height: 20px;
-    background-color: var(--danger-color);
-    color: white;
-    font-weight: 700;
-    font-size: 0.8rem;
-    border-radius: 50%;
     margin-left: 5px;
 }
 
@@ -2727,16 +2744,4 @@ body {
 .long-absent-warning {
     border-left: 3px solid var(--danger-color);
     padding-left: calc(var(--spacing-sm) - 3px);
-}
-
-/* Gaya untuk baris tabel yang durasi kerjanya panjang */
-.long-duty-row {
-    background-color: var(--warning-light) !important;
-}
-.long-duty-alert {
-    font-weight: bold;
-    color: var(--warning-color);
-    display: flex;
-    align-items: center;
-    gap: 5px;
 }
