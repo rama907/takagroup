@@ -9,30 +9,39 @@ if (!isLoggedIn() || !hasRole(['ceo', 'direktur', 'wakil_direktur', 'manager']))
 $user = getCurrentUser();
 $pending_requests_count = getPendingRequestCount();
 
+// --- New Rounding Function ---
+/**
+ * Membulatkan total menit duty ke jam terdekat.
+ * 2 jam 29 menit -> 2 jam.
+ * 2 jam 30 menit -> 3 jam.
+ */
+function roundToNearestHour($minutes) {
+    // PHP's round() function naturally handles X.5 up, which fits the 30-minute rule.
+    return round($minutes / 60);
+}
+
 // Definisi gaji per jam baru (Rupiah per jam)
 $hourly_rates = [
-    'ceo' => 0,          // Tidak ada gaji
-    'direktur' => 0,     // Tidak ada gaji
-    'wakil_direktur' => 0, // Tidak ada gaji
-    'manager' => 41175,
-    'barista' => 36720,
-    'waiters' => 31500,
-    'guard' => 31500,
-    'karyawan' => 31500,
-    'magang' => 27000,
-    'chef' => 0, // Jika peran chef masih ada dan tidak digaji
+    'ceo' => 40000,          
+    'direktur' => 40000,     
+    'wakil_direktur' => 40000, 
+    'manager' => 24400,
+    'guard' => 19200,
+    'barista' => 19200,
+    'waiters' => 14000,
+    'karyawan' => 14000,
+    'magang' => 9600,
+    'chef' => 0, // Asumsi Chef masih tidak digaji per jam
 ];
 
-// Konstanta perhitungan
-$min_duty_hours_no_salary = 5;
-$min_duty_minutes_no_salary = $min_duty_hours_no_salary * 60; // 300 menit
-$min_duty_hours_for_base_salary = 8;
-$min_duty_minutes_for_base_salary = $min_duty_hours_for_base_salary * 60; // 480 menit
+// Konstanta perhitungan (dalam jam)
+$MIN_DUTY_FULL_PAY_HOURS = 10;
+$MIN_DUTY_40_CUT_HOURS = 8; 
 
 $success_message = null;
 $error_message = null;
 
-// --- Handle Payment Status Actions (Dibiarkan sama) ---
+// --- Handle Payment Status Actions ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     $action = $_POST['action'];
     $employee_id = (int)($_POST['employee_id'] ?? 0);
@@ -207,48 +216,55 @@ foreach ($employees_raw_data as $employee) {
     $employee_id = $employee['id'];
     $employee_role = $employee['role'];
     $total_duty_minutes = $employee['total_duty_minutes'];
-    $total_duty_hours = $total_duty_minutes / 60;
+    
+    // 1. Hitung Jam Kerja yang Dibulatkan (Rounding to nearest hour)
+    $rounded_duty_hours = roundToNearestHour($total_duty_minutes);
     
     // Total Penjualan untuk data export
     $total_sales_packages = ($employee['paket_sake'] ?? 0) + ($employee['paket_anggur_merah'] ?? 0) + ($employee['paket_tuak'] ?? 0) + ($employee['paket_soju'] ?? 0) + ($employee['paket_spicy_1'] ?? 0) + ($employee['paket_spicy_2'] ?? 0) + ($employee['paket_spicy_3'] ?? 0);
 
-    $gaji_pokok = 0;
-    $total_gajian = 0;
+    $gaji_pokok = 0; // Gaji Pokok sebelum potongan (Base Pay)
+    $total_gajian = 0; // Gaji Akhir yang Dibayarkan
     $cut_percentage = 0;
     $keterangan_gaji = 'N/A';
+    $is_cut = false;
 
     // --- LOGIKA PERHITUNGAN GAJI BARU ---
     if (isset($hourly_rates[$employee_role])) {
         $hourly_rate = $hourly_rates[$employee_role];
         
-        // 1. Peran Tertentu (CEO, Direktur, Wakil Direktur) tidak digaji
-        if (in_array($employee_role, ['ceo', 'direktur', 'wakil_direktur'])) {
-            $total_gajian = 0;
+        // Gaji Pokok (Base Pay) berdasarkan jam yang dibulatkan
+        $base_salary = $rounded_duty_hours * $hourly_rate;
+        $gaji_pokok = $base_salary; 
+
+        // 1. Peran Khusus (Chef)
+        if (in_array($employee_role, ['chef'])) {
+            $keterangan_gaji = 'Tidak Digaji/Jabatan Khusus';
             $gaji_pokok = 0;
-            $keterangan_gaji = 'Tidak Digaji';
-        } 
-        // 2. Jika Total Duty < 5 jam (300 menit): TIDAK DAPAT GAJI
-        elseif ($total_duty_minutes < $min_duty_minutes_no_salary) {
             $total_gajian = 0;
-            $gaji_pokok = 0;
-            $keterangan_gaji = 'Tidak Digaji (Duty < 5j)';
         }
-        // 3. Jika Total Duty antara 5 jam dan < 8 jam (300 <= Duty < 480 menit)
-        elseif ($total_duty_minutes < $min_duty_minutes_for_base_salary) { 
-            // Gaji = 50% dari total gaji 8 jam duty
-            $gaji_8_jam = $hourly_rate * $min_duty_hours_for_base_salary;
-            $gaji_pokok = $gaji_8_jam * 0.50;
+        // 2. Peran Senior (CEO, Direktur, Wakil Direktur)
+        elseif (in_array($employee_role, ['ceo', 'direktur', 'wakil_direktur'])) {
             $total_gajian = $gaji_pokok;
-            $is_bonus_cut = true; // Menandakan pemotongan 50%
-            $keterangan_gaji = 'Potongan 50% (Duty < 8j)';
+            $keterangan_gaji = 'Full Pay (Senior)';
         }
-        // 4. Jika Total Duty >= 8 jam (Duty >= 480 menit)
+        // 3. Perhitungan Gaji Operasional dengan Potongan
         else {
-            // Gaji dihitung pro-rata berdasarkan total_duty_minutes
-            $gaji_per_menit = $hourly_rate / 60;
-            $gaji_pokok = $gaji_per_menit * $total_duty_minutes;
-            $total_gajian = $gaji_pokok;
-            $keterangan_gaji = 'Lulus Syarat (Pro-rata)';
+            if ($rounded_duty_hours >= $MIN_DUTY_FULL_PAY_HOURS) {
+                // Full Pay (>= 10 jam)
+                $total_gajian = $gaji_pokok;
+                $keterangan_gaji = 'Lulus Syarat (Full Pay)';
+            } elseif ($rounded_duty_hours >= $MIN_DUTY_40_CUT_HOURS) {
+                // Potongan 40% (8 jam <= Duty < 10 jam)
+                $total_gajian = $gaji_pokok * 0.60; // Pay 60%
+                $keterangan_gaji = 'Potongan 40% (Duty < 10j)';
+                $is_cut = true;
+            } else {
+                // Potongan 50% (< 8 jam)
+                $total_gajian = $gaji_pokok * 0.50; // Pay 50%
+                $keterangan_gaji = 'Potongan 50% (Duty < 8j)';
+                $is_cut = true;
+            }
         }
     }
     // --- AKHIR LOGIKA PERHITUNGAN GAJI BARU ---
@@ -262,18 +278,19 @@ foreach ($employees_raw_data as $employee) {
         'role' => $employee['role'],
         'is_paid' => (bool)$employee['is_paid'],
         'total_duty_minutes' => $total_duty_minutes,
-        'total_duty_hours' => $total_duty_hours,
+        'total_duty_hours' => $total_duty_minutes / 60, // Total duty tidak dibulatkan
+        'rounded_duty_hours' => $rounded_duty_hours,
         'total_sales_packages' => $total_sales_packages,
         // Komponen Bonus dihilangkan / diatur 0
         'overtime_hours_display' => 0, 
         'overtime_remaining_minutes' => 0,
-        'gaji_pokok' => $total_gajian, // Gaji Pokok mencerminkan Total Gaji yang dibayarkan
+        'gaji_pokok' => $gaji_pokok, 
         'bonus_penjualan' => 0, 
         'nominal_bonus_lembur_perjam' => 0,
         'total_bonus_lembur' => 0,
         'bonus_21_jam' => 0,
         'total_gajian' => $total_gajian,
-        'is_bonus_cut' => $is_bonus_cut,
+        'is_cut' => $is_cut,
         'keterangan_gaji' => $keterangan_gaji
     ];
 }
@@ -293,10 +310,12 @@ if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
     $headers = [
         'Nama',
         'Jabatan',
-        'Total Jam Duty (Jam)',
+        'Total Jam Duty (Jam Asli)',
         'Total Jam Duty (Menit)',
+        'Total Jam Duty (Jam Dibulatkan)', // BARU
         'Total Penjualan Paket',
-        'Gaji Bersih (Rp)',
+        'Gaji Pokok (Rp)',
+        'Total Gaji Bersih (Rp)',
         'Keterangan Gaji',
         'Status Pembayaran'
     ];
@@ -306,9 +325,11 @@ if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
         $data_row = [
             htmlspecialchars_decode($row['name']),
             getRoleDisplayName($row['role']),
-            number_format($row['total_duty_minutes'] / 60, 2), // Tampilkan jam dengan 2 desimal
+            number_format($row['total_duty_minutes'] / 60, 2), // Total Jam Duty (Jam Asli)
             $row['total_duty_minutes'],
+            $row['rounded_duty_hours'], // Jam Dibulatkan
             $row['total_sales_packages'],
+            $row['gaji_pokok'],
             $row['total_gajian'],
             $row['keterangan_gaji'],
             $row['is_paid'] ? 'Sudah Dibayar' : 'Belum Dibayar'
@@ -461,11 +482,12 @@ if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
                                 <tr>
                                     <th>Nama</th>
                                     <th>Jabatan</th>
-                                    <th>Total Jam Duty</th>
-                                    <th>Total Penjualan</th>
-                                    <th>Gaji Pokok</th>
+                                    <th>Jam Duty (Asli)</th>
+                                    <th>Jam Duty (Bulat)</th>
+                                    <th>Penjualan</th>
+                                    <th>Base Gaji (100%)</th>
+                                    <th>Total Gaji (Net)</th>
                                     <th>Keterangan</th>
-                                    <th>Total Gaji</th>
                                     <th>Status</th>
                                     <th>Aksi</th>
                                 </tr>
@@ -473,7 +495,7 @@ if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
                             <tbody>
                                 <?php if (empty($employees_data)): ?>
                                     <tr>
-                                        <td colspan="9" class="no-data">Belum ada data anggota atau aktivitas untuk rekap gaji.</td>
+                                        <td colspan="10" class="no-data">Belum ada data anggota atau aktivitas untuk rekap gaji.</td>
                                     </tr>
                                 <?php else: ?>
                                     <?php foreach ($employees_data as $employee): ?>
@@ -491,28 +513,32 @@ if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
                                                 <?= htmlspecialchars(getRoleDisplayName($employee['role'])) ?>
                                             </span>
                                         </td>
-                                        <td data-label="Total Jam Duty">
-                                            <?= formatDuration($employee['total_duty_minutes']) ?>
+                                        <td data-label="Jam Duty (Asli)">
+                                            <small><?= number_format($employee['total_duty_minutes'] / 60, 2) ?> jam</small>
+                                            <small>(<?= formatDuration($employee['total_duty_minutes']) ?>)</small>
                                         </td>
-                                        <td data-label="Total Penjualan">
+                                        <td data-label="Jam Duty (Bulat)">
+                                            <strong><?= $employee['rounded_duty_hours'] ?> jam</strong>
+                                        </td>
+                                        <td data-label="Penjualan">
                                             <?= $employee['total_sales_packages'] . ' Paket' ?>
                                         </td>
-                                        <td data-label="Gaji Pokok">
+                                        <td data-label="Base Gaji (100%)">
                                             <?= 'Rp ' . number_format($employee['gaji_pokok'], 0, ',', '.') ?>
-                                        </td>
-                                        <td data-label="Keterangan">
-                                            <?php if (in_array($employee['role'], ['ceo', 'direktur', 'wakil_direktur'])): ?>
-                                                <small style="display: block; color: var(--info-color); font-weight: 600;">Tidak Digaji</small>
-                                            <?php elseif ($employee['total_duty_minutes'] < $min_duty_minutes_no_salary): ?>
-                                                <small style="display: block; color: var(--danger-color); font-weight: 600;"><?= $employee['keterangan_gaji'] ?></small>
-                                            <?php elseif ($employee['is_bonus_cut']): ?>
-                                                <small style="display: block; color: var(--danger-color); font-weight: 600;"><?= $employee['keterangan_gaji'] ?></small>
-                                            <?php else: ?>
-                                                <small style="display: block; color: var(--success-color); font-weight: 600;">Lulus Syarat</small>
-                                            <?php endif; ?>
                                         </td>
                                         <td data-label="Total Gaji">
                                             <strong><?= 'Rp ' . number_format($employee['total_gajian'], 0, ',', '.') ?></strong>
+                                        </td>
+                                        <td data-label="Keterangan">
+                                            <?php if (in_array($employee['role'], ['chef'])): ?>
+                                                <small style="display: block; color: var(--info-color); font-weight: 600;">Tidak Digaji</small>
+                                            <?php elseif (in_array($employee['role'], ['ceo', 'direktur', 'wakil_direktur'])): ?>
+                                                <small style="display: block; color: var(--success-color); font-weight: 600;">Senior (Full Pay)</small>
+                                            <?php elseif ($employee['is_cut']): ?>
+                                                <small style="display: block; color: var(--danger-color); font-weight: 600;"><?= $employee['keterangan_gaji'] ?></small>
+                                            <?php else: ?>
+                                                <small style="display: block; color: var(--success-color); font-weight: 600;">Lulus Syarat (Full Pay)</small>
+                                            <?php endif; ?>
                                         </td>
                                         <td data-label="Status">
                                             <span class="payslip-status <?= $employee['is_paid'] ? 'paid' : 'unpaid' ?>">

@@ -12,27 +12,37 @@ $pending_requests_count = getPendingRequestCount(); // Untuk sidebar
 // URL untuk generate payslip karyawan yang sedang login
 $payslip_url = 'generate-payslip.php?employee_id=' . $user['id'];
 
-// --- Duplikasi logika perhitungan gaji dari salary-recap.php ---
+// --- NEW SALARY LOGIC AND CONSTANTS ---
+
+/**
+ * Membulatkan total menit duty ke jam terdekat.
+ * 2 jam 29 menit -> 2 jam.
+ * 2 jam 30 menit -> 3 jam.
+ */
+function roundToNearestHour($minutes) {
+    return round($minutes / 60);
+}
 
 // Definisi gaji per jam baru (Rupiah per jam)
 $hourly_rates = [
-    'ceo' => 0,          // Tidak ada gaji
-    'direktur' => 0,     // Tidak ada gaji
-    'wakil_direktur' => 0, // Tidak ada gaji
-    'manager' => 41175,
-    'barista' => 36720,
-    'waiters' => 31500,
-    'guard' => 31500,
-    'karyawan' => 31500,
-    'magang' => 27000,
+    'ceo' => 40000,          
+    'direktur' => 40000,     
+    'wakil_direktur' => 40000, 
+    'manager' => 24400,
+    'guard' => 19200,
+    'barista' => 19200,
+    'waiters' => 14000,
+    'karyawan' => 14000,
+    'magang' => 9600,
     'chef' => 0, 
 ];
 
-// Konstanta perhitungan
-$min_duty_hours_no_salary = 5;
-$min_duty_minutes_no_salary = $min_duty_hours_no_salary * 60; // 300 menit
-$min_duty_hours_for_base_salary = 8;
-$min_duty_minutes_for_base_salary = $min_duty_hours_for_base_salary * 60; // 480 menit
+// Konstanta perhitungan (dalam jam)
+$MIN_DUTY_FULL_PAY_HOURS = 10;
+$MIN_DUTY_40_CUT_HOURS = 8;
+$MIN_DUTY_50_CUT_HOURS = 0; // Sebenarnya sudah dicakup oleh MIN_DUTY_40_CUT_HOURS
+// --- END NEW SALARY LOGIC AND CONSTANTS ---
+
 
 // Ambil data anggota spesifik (yang sedang login) menggunakan subquery untuk agregasi
 $stmt = $conn->prepare("
@@ -44,7 +54,9 @@ $stmt = $conn->prepare("
            COALESCE(sales_summary.paket_soju, 0) as paket_soju,
            COALESCE(sales_summary.paket_spicy_1, 0) as paket_spicy_1,
            COALESCE(sales_summary.paket_spicy_2, 0) as paket_spicy_2,
-           COALESCE(sales_summary.paket_spicy_3, 0) as paket_spicy_3
+           COALESCE(sales_summary.paket_spicy_3, 0) as paket_spicy_3,
+           COALESCE(sales_summary.paket_vip_person, 0) as paket_vip_person, /* NEW */
+           COALESCE(sales_summary.paket_special_30min, 0) as paket_special_30min /* NEW */
     FROM employees e
     LEFT JOIN (
         SELECT
@@ -63,7 +75,9 @@ $stmt = $conn->prepare("
             SUM(paket_soju) as paket_soju,
             SUM(paket_spicy_1) as paket_spicy_1,
             SUM(paket_spicy_2) as paket_spicy_2,
-            SUM(paket_spicy_3) as paket_spicy_3
+            SUM(paket_spicy_3) as paket_spicy_3,
+            SUM(paket_vip_person) as paket_vip_person,
+            SUM(paket_special_30min) as paket_special_30min
         FROM sales_data
         GROUP BY employee_id
     ) as sales_summary ON e.id = sales_summary.employee_id
@@ -92,11 +106,13 @@ if (!$employee_data_summary) {
         'paket_spicy_1' => 0,
         'paket_spicy_2' => 0,
         'paket_spicy_3' => 0,
+        'paket_vip_person' => 0,
+        'paket_special_30min' => 0,
     ];
 }
 
 $employee_role_summary = $employee_data_summary['role'];
-$is_paid_status = (bool)($employee_data_summary['is_paid'] ?? false); // Ambil status pembayaran
+$is_paid_status = (bool)($employee_data_summary['is_paid'] ?? false); 
 $total_duty_minutes_summary = $employee_data_summary['total_duty_minutes'];
 $total_penjualan_paket_summary = ($employee_data_summary['paket_sake'] ?? 0) + 
                                  ($employee_data_summary['paket_anggur_merah'] ?? 0) + 
@@ -104,42 +120,70 @@ $total_penjualan_paket_summary = ($employee_data_summary['paket_sake'] ?? 0) +
                                  ($employee_data_summary['paket_soju'] ?? 0) + 
                                  ($employee_data_summary['paket_spicy_1'] ?? 0) + 
                                  ($employee_data_summary['paket_spicy_2'] ?? 0) + 
-                                 ($employee_data_summary['paket_spicy_3'] ?? 0);
+                                 ($employee_data_summary['paket_spicy_3'] ?? 0) +
+                                 ($employee_data_summary['paket_vip_person'] ?? 0) +
+                                 ($employee_data_summary['paket_special_30min'] ?? 0);
 
-$is_salary_cut_50 = false;
-$gaji_pokok_summary = 0;
+$gaji_pokok_base_summary = 0; 
+$total_gajian_summary = 0; 
+$is_cut = false;
+$cut_percentage_display = 0;
 
-// --- LOGIKA PERHITUNGAN GAJI BARU (Untuk menentukan total_gajian_summary) ---
+
+// --- LOGIKA PERHITUNGAN GAJI BARU (Diulangi di sini untuk Ringkasan) ---
+
+// 1. Hitung Jam Kerja yang Dibulatkan
+$rounded_duty_hours = roundToNearestHour($total_duty_minutes_summary);
+
 if (isset($hourly_rates[$employee_role_summary])) {
     $hourly_rate = $hourly_rates[$employee_role_summary];
-    
-    if (in_array($employee_role_summary, ['ceo', 'direktur', 'wakil_direktur'])) {
-        $gaji_pokok_summary = 0;
-    } 
-    elseif ($total_duty_minutes_summary < $min_duty_minutes_no_salary) {
-        $gaji_pokok_summary = 0;
-    }
-    elseif ($total_duty_minutes_summary < $min_duty_minutes_for_base_salary) { 
-        $gaji_8_jam = $hourly_rate * $min_duty_hours_for_base_salary;
-        $gaji_pokok_summary = $gaji_8_jam * 0.50;
-    }
-    else {
-        $gaji_per_menit = $hourly_rate / 60;
-        $gaji_pokok_summary = $gaji_per_menit * $total_duty_minutes_summary;
-    }
-} else {
-    $gaji_pokok_summary = 0;
-}
 
-$total_gajian_summary = $gaji_pokok_summary;
-$total_nominal_bonus_summary = 0; // Tetap 0 sesuai aturan baru
+    // Gaji Pokok (Base Pay) berdasarkan jam yang dibulatkan
+    $gaji_pokok_base_summary = $rounded_duty_hours * $hourly_rate;
+
+    // 1. Peran Khusus (Chef)
+    if (in_array($employee_role_summary, ['chef'])) {
+        $gaji_pokok_summary = 0;
+        $total_gajian_summary = 0;
+    }
+    // 2. Peran Senior (CEO, Direktur, Wakil Direktur)
+    elseif (in_array($employee_role_summary, ['ceo', 'direktur', 'wakil_direktur'])) {
+        $total_gajian_summary = $gaji_pokok_base_summary;
+    }
+    // 3. Perhitungan Gaji Operasional dengan Potongan
+    else {
+        if ($rounded_duty_hours >= $MIN_DUTY_FULL_PAY_HOURS) {
+            // Full Pay (>= 10 jam)
+            $total_gajian_summary = $gaji_pokok_base_summary;
+        } elseif ($rounded_duty_hours >= $MIN_DUTY_40_CUT_HOURS) {
+            // Potongan 40% (8 jam <= Duty < 10 jam)
+            $cut_percentage_display = 40;
+            $total_gajian_summary = $gaji_pokok_base_summary * 0.60; // Pay 60%
+            $is_cut = true;
+        } else {
+            // Potongan 50% (< 8 jam)
+            $cut_percentage_display = 50;
+            $total_gajian_summary = $gaji_pokok_base_summary * 0.50; // Pay 50%
+            $is_cut = true;
+        }
+    }
+}
+// --- AKHIR LOGIKA PERHITUNGAN GAJI BARU ---
+
+$gaji_pokok_summary = $gaji_pokok_base_summary;
 
 // Fungsi format mata uang
 function formatRupiah($amount) {
     return 'Rp ' . number_format($amount, 0, ',', '.') . '';
 }
 
-// --- Akhir duplikasi logika perhitungan gaji ---
+// Helper function untuk format durasi (untuk display)
+function formatDurationDisplay($minutes) {
+    if ($minutes < 0) return "0 jam 0 menit";
+    $hours = floor($minutes / 60);
+    $remainingMinutes = $minutes % 60;
+    return "{$hours}j {$remainingMinutes}m";
+}
 ?>
 
 <!DOCTYPE html>
@@ -225,10 +269,22 @@ function formatRupiah($amount) {
             color: var(--success-color);
             font-size: 1.8rem;
         }
-        .summary-item.payment-status .value { /* Class baru untuk status pembayaran */
+        .summary-item.payment-status .value { 
             font-size: 1.2rem;
             font-weight: 700;
             letter-spacing: 0.05em;
+        }
+        
+        /* New warning colors for my-payslip */
+        .note-red {
+             color: var(--danger-color);
+             border-color: var(--danger-color);
+             background-color: var(--danger-light);
+        }
+        .note-orange {
+             color: #fd7e14;
+             border-color: #fd7e14;
+             background-color: #fff4e6;
         }
     </style>
 </head>
@@ -246,22 +302,30 @@ function formatRupiah($amount) {
                 <p>Lihat dan unduh slip gaji pribadi Anda.</p>
             </div>
 
-            <?php if ($total_duty_minutes_summary < $min_duty_minutes_no_salary && $gaji_pokok_summary == 0): ?>
+            <?php if (in_array($employee_role_summary, ['chef'])): ?>
                 <div class="error-message">
-                    <strong>Penting:</strong> Total jam kerja Anda (<?= formatDuration($total_duty_minutes_summary) ?>) belum mencapai minimal <?= $min_duty_hours_no_salary ?> jam. Anda **TIDAK** mendapatkan gaji.
+                    <strong>Penting:</strong> Jabatan Anda (**<?= getRoleDisplayName($employee_role_summary) ?>**) tidak menerima gaji operasional per jam. Total gaji ditampilkan sebagai nol.
                 </div>
-            <?php endif; ?>
-
-            <?php if ($total_duty_minutes_summary >= $min_duty_minutes_no_salary && $total_duty_minutes_summary < $min_duty_minutes_for_base_salary): ?>
+            <?php elseif ($rounded_duty_hours < $MIN_DUTY_40_CUT_HOURS): ?>
+                <div class="error-message">
+                    <strong>Penting:</strong> Jam kerja yang dibulatkan (**<?= $rounded_duty_hours ?> jam**) di bawah minimum <?= $MIN_DUTY_40_CUT_HOURS ?> jam. Gaji Anda dikenakan **potongan 50%**.
+                </div>
+            <?php elseif ($rounded_duty_hours < $MIN_DUTY_FULL_PAY_HOURS): ?>
                 <div class="warning-message">
-                    <strong>Peringatan:</strong> Total jam kerja Anda (<?= formatDuration($total_duty_minutes_summary) ?>) di bawah <?= $min_duty_hours_for_base_salary ?> jam, sehingga gaji dihitung **50% dari total gaji 8 jam**.
+                    <strong>Peringatan:</strong> Jam kerja yang dibulatkan (**<?= $rounded_duty_hours ?> jam**) di bawah <?= $MIN_DUTY_FULL_PAY_HOURS ?> jam, sehingga gaji dikenakan **potongan 40%**.
                 </div>
             <?php endif; ?>
 
             <div class="summary-section">
                 <div class="summary-item">
-                    <div class="label">Total Jam Duty</div>
-                    <div class="value"><?= formatDuration($total_duty_minutes_summary) ?></div>
+                    <div class="label">Total Jam Duty (Asli)</div>
+                    <div class="value"><?= formatDurationDisplay($total_duty_minutes_summary) ?></div>
+                </div>
+                <div class="summary-item" style="border: 2px solid var(--primary-color);">
+                    <div class="label">Total Jam Duty (Bulat)</div>
+                    <div class="value" style="color: var(--primary-color);">
+                        <?= $rounded_duty_hours ?> jam
+                    </div>
                 </div>
                 <div class="summary-item">
                     <div class="label">Total Penjualan</div>
@@ -277,8 +341,8 @@ function formatRupiah($amount) {
                     </div>
                 </div>
                 
-                <div class="summary-item total-gaji">
-                    <div class="label">Total Gaji Keseluruhan</div>
+                <div class="summary-item total-gaji" style="grid-column: 1 / -1; max-width: 400px; margin: 10px auto;">
+                    <div class="label">Total Gaji Bersih</div>
                     <div class="value"><?= formatRupiah($total_gajian_summary) ?></div>
                 </div>
             </div>
@@ -286,7 +350,7 @@ function formatRupiah($amount) {
             <div class="payslip-action-card">
                 <span class="icon">⬇️</span>
                 <h2>Siap Mengunduh Slip Gaji Anda?</h2>
-                <p>Klik tombol di bawah ini untuk melihat detail lengkap dan mencetak slip gaji Anda.</p>
+                <p>Klik tombol di bawah ini untuk melihat detail lengkap dan mencetak slip gaji Anda. Pastikan Anda sudah melihat perhitungan potongan di atas.</p>
                 <a href="<?= $payslip_url ?>" target="_blank" class="btn btn-primary btn-lg">
                     <span class="btn-icon">👁️</span>
                     Lihat & Unduh Slip Gaji
