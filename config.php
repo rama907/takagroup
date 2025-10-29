@@ -1,5 +1,5 @@
 <?php
-// File: config.php (Modifikasi Akhir)
+// File: config.php (Modifikasi Akhir - Perbaikan Recursive Decode)
 
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
@@ -48,9 +48,10 @@ function getCurrentUser() {
 
 // Function to format duration
 function formatDuration($minutes) {
+    if ($minutes < 0) return "0j 0m"; // Tangani durasi negatif
     $hours = floor($minutes / 60);
     $mins = $minutes % 60;
-    return $hours . 'j ' . $mins . 'm';
+    return "{$hours}j {$mins}m";
 }
 
 // Function to get role display name
@@ -148,12 +149,17 @@ function sendDiscordNotification($data, $type = 'info') {
     $warehouse_bot_name = "Elysium Gudang Bot";
     
     // NEW Webhook 5: Penjualan
-    $sales_webhook_url = 'https://discord.com/api/webhooks/1428713282058850326/Ect0UAvVTPV9aO7y7y4zIhwPoqbAsQiAzWfsGLGv5Ll6desxAcy_aGG72WpRa6XDY0G4'; // <-- GANTI INI
+    $sales_webhook_url = 'https://discord.com/api/webhooks/1428713282058850326/Ect0UAvVTPV9aO7y7y4zIhwPoqbAsQiAzWfsGLGv5Ll6desxAcy_aGG72WpRa6XDY0G4'; 
     $sales_bot_name = "Elysium Sales Bot";
     
-    // NEW Webhook 6: Laporan Rekap
-    $report_webhook_url = 'https://discord.com/api/webhooks/1428713605041488035/hs5-hnUVGxx0KXzSe1XqT-Dl5scQUXfc-KYMUIIbzfEWpMzVQN3_FAeyYI9AscWTR2v0'; // <-- GANTI INI
+    // NEW Webhook 6: Laporan Rekap Absensi
+    $report_webhook_url = 'https://discord.com/api/webhooks/1428713605041488035/hs5-hnUVGxx0KXzSe1XqT-Dl5scQUXfc-KYMUIIbzfEWpMzVQN3_FAeyYI9AscWTR2v0'; 
     $report_bot_name = "Elysium Report Bot";
+
+    // NEW Webhook 7: Rekap Jam Duty
+    $duty_recap_webhook_url = 'https://discord.com/api/webhooks/1431186776592089151/8V_8Nox-4vQhFW7wtAD7VVpr3pEDy3f08cxbQwJ9kGRCKBQaHjHtyPsraSbdRYjNkHa2'; 
+    $duty_recap_bot_name = "Elysium Duty Recap Bot";
+
 
     // --- 2. Tentukan Webhook & Bot yang Digunakan ---
     $webhooks_to_send = [];
@@ -168,12 +174,11 @@ function sendDiscordNotification($data, $type = 'info') {
         'duty_log_deleted'
     ];
     $sales_types = ['sale_input', 'sale_deleted']; 
-    $report_types = ['daily_absent_recap']; // Hanya untuk rekap absensi harian
+    $recap_types = ['daily_absent_recap', 'daily_duty_recap']; 
 
     $refrigerator_types = ['refrigerator_deposit', 'refrigerator_withdraw'];
     $warehouse_types = ['warehouse_deposit', 'warehouse_withdraw'];
-    $general_types = ['clock_event', 'admin_employee_action', 'admin_system_action', 'salary_paid_single', 'salary_unpaid_single', 'salary_unpaid_all'];
-
+    
     // Routing Logic
     if (in_array($type, $refrigerator_types)) {
         if (strpos($refrigerator_webhook_url, 'WEBHOOK_URL_HERE') === false) { $webhooks_to_send[] = $refrigerator_webhook_url; }
@@ -184,9 +189,14 @@ function sendDiscordNotification($data, $type = 'info') {
     } elseif (in_array($type, $sales_types)) {
         if (strpos($sales_webhook_url, 'placeholder_sales_webhook') === false) { $webhooks_to_send[] = $sales_webhook_url; }
         $username = $sales_bot_name;
-    } elseif (in_array($type, $report_types)) {
-        if (strpos($report_webhook_url, 'placeholder_report_webhook') === false) { $webhooks_to_send[] = $report_webhook_url; }
-        $username = $report_bot_name;
+    } elseif (in_array($type, $recap_types)) {
+         if ($type === 'daily_duty_recap') {
+            if (strpos($duty_recap_webhook_url, 'placeholder_duty_recap') === false) { $webhooks_to_send[] = $duty_recap_webhook_url; }
+            $username = $duty_recap_bot_name;
+        } else {
+            if (strpos($report_webhook_url, 'placeholder_report_webhook') === false) { $webhooks_to_send[] = $report_webhook_url; }
+            $username = $report_bot_name;
+        }
     } elseif (in_array($type, $request_types)) {
         if (strpos($request_webhook_url, 'WEBHOOK_URL_HERE') === false) { $webhooks_to_send[] = $request_webhook_url; }
         $username = $request_bot_name;
@@ -195,7 +205,7 @@ function sendDiscordNotification($data, $type = 'info') {
     }
 
     // --- Critical Fallback Check ---
-    if (empty($webhooks_to_send) || (count($webhooks_to_send) === 1 && strpos($webhooks_to_send[0], 'WEBHOOK_URL_HERE') !== false)) {
+    if (empty($webhooks_to_send) || (count($webhooks_to_send) === 1 && strpos($webhooks_to_send[0], 'WEBHOOK_URL_HERE') !== false) || (count($webhooks_to_send) === 1 && strpos($webhooks_to_send[0], 'placeholder') !== false)) {
          $webhooks_to_send = [$general_webhook_url];
          $username = $general_bot_name;
     }
@@ -221,6 +231,7 @@ function sendDiscordNotification($data, $type = 'info') {
         'warehouse_deposit' => 3066993,
         'warehouse_withdraw' => 15158332,
         'daily_absent_recap' => 15158332, 
+        'daily_duty_recap' => 3447003,
     ];
     $color = $colors[$type] ?? 0; 
 
@@ -235,20 +246,24 @@ function sendDiscordNotification($data, $type = 'info') {
         ],
     ];
     
-    // Fungsi bantuan untuk decode string (mengatasi masalah yang terlihat di screenshot user)
-    // Walaupun seharusnya tidak perlu karena data dari DB, ini adalah lapisan pengaman
-    // agar data yang sudah di-escape HTML (misal dari form atau DB) tidak merusak JSON.
-    $decode = function($str) {
-        return htmlspecialchars_decode($str, ENT_QUOTES);
+    // FIX PENTING: Perbaikan fungsi rekursif untuk HTML decoding
+    $decode = function($str) use (&$decode) {
+        if (is_array($str)) {
+            // Menggunakan array_map rekursif
+            return array_map($decode, $str);
+        }
+        // Hanya decode jika itu string
+        return is_string($str) ? htmlspecialchars_decode($str, ENT_QUOTES) : $str;
     };
+    
+    // Mengaplikasikan decoding ke seluruh data
+    $decoded_data = $decode($data);
 
     // Logika untuk mengisi embed berdasarkan 'type' dan 'data'
     switch ($type) {
         case 'clock_event': 
-            $employee_name = $decode($data['employee_name'] ?? 'N/A');
-            // ... (logika field lainnya)
-            // ... (logika field lainnya)
-            if (($data['event_type'] ?? '') === 'clock_in') {
+            $employee_name = $decoded_data['employee_name'] ?? 'N/A';
+            if (($decoded_data['event_type'] ?? '') === 'clock_in') {
                 $embed['title'] = "⏰ Karyawan Mulai Bertugas!";
                 $embed['description'] = "**{$employee_name}** telah mulai bertugas.";
                 $embed['color'] = $colors['info'];
@@ -256,79 +271,79 @@ function sendDiscordNotification($data, $type = 'info') {
                     ['name' => 'Waktu Mulai', 'value' => date('H:i:s'), 'inline' => true],
                     ['name' => 'Status', 'value' => '🟢 On Duty', 'inline' => true],
                 ];
-            } elseif (($data['event_type'] ?? '') === 'clock_out') {
+            } elseif (($decoded_data['event_type'] ?? '') === 'clock_out') {
                 $embed['title'] = "⏸️ Karyawan Selesai Bertugas!";
                 $embed['description'] = "Karyawan **{$employee_name}** telah selesai bertugas.";
                 $embed['color'] = $colors['info'];
                 $embed['fields'] = [
                     ['name' => 'Waktu Selesai', 'value' => date('H:i:s'), 'inline' => true],
-                    ['name' => 'Durasi Tugas', 'value' => $decode($data['duration'] ?? 'N/A'), 'inline' => true],
+                    ['name' => 'Durasi Tugas', 'value' => $decoded_data['duration'] ?? 'N/A', 'inline' => true],
                     ['name' => 'Status', 'value' => '🔴 Off Duty', 'inline' => true],
                 ];
             }
             break;
 
         case 'leave_request_submitted': 
-            $employee_name = $decode($data['employee_name'] ?? 'N/A');
+            $employee_name = $decoded_data['employee_name'] ?? 'N/A';
             $embed['title'] = "📝 Permohonan Cuti Baru!";
             $embed['description'] = "Karyawan **{$employee_name}** telah mengajukan permohonan cuti.";
             $embed['color'] = $colors['warning'];
             $embed['fields'] = [
-                ['name' => 'Periode Cuti', 'value' => date('d/m/Y', strtotime($data['start_date'] ?? '')) . ' - ' . date('d/m/Y', strtotime($data['end_date'] ?? '')), 'inline' => true],
+                ['name' => 'Periode Cuti', 'value' => date('d/m/Y', strtotime($decoded_data['start_date'] ?? '')) . ' - ' . date('d/m/Y', strtotime($decoded_data['end_date'] ?? '')), 'inline' => true],
                 ['name' => 'Status', 'value' => '🟡 Pending', 'inline' => true],
-                ['name' => 'Alasan (OOC)', 'value' => empty($data['reason_ooc']) ? '-' : $decode($data['reason_ooc'])],
-                ['name' => 'Alasan (IC)', 'value' => empty($data['reason_ic']) ? '-' : $decode($data['reason_ic'])],
+                ['name' => 'Alasan (OOC)', 'value' => empty($decoded_data['reason_ooc']) ? '-' : $decoded_data['reason_ooc']],
+                ['name' => 'Alasan (IC)', 'value' => empty($decoded_data['reason_ic']) ? '-' : $decoded_data['reason_ic']],
             ];
             break;
         
         case 'resignation_request_submitted':
-            $employee_name = $decode($data['employee_name'] ?? 'N/A');
+            $employee_name = $decoded_data['employee_name'] ?? 'N/A';
             $embed['title'] = "📄 Permohonan Resign Baru!";
             $embed['description'] = "Karyawan **{$employee_name}** telah mengajukan permohonan resign.";
             $embed['color'] = $colors['danger'];
             $embed['fields'] = [
-                ['name' => 'Tanggal Resign', 'value' => date('d/m/Y', strtotime($data['resignation_date'] ?? '')), 'inline' => true],
+                ['name' => 'Tanggal Resign', 'value' => date('d/m/Y', strtotime($decoded_data['resignation_date'] ?? '')), 'inline' => true],
                 ['name' => 'Status', 'value' => '🟡 Pending', 'inline' => true],
-                ['name' => 'Passport', 'value' => $decode($data['passport'] ?? 'N/A'), 'inline' => true],
-                ['name' => 'CID', 'value' => $decode($data['cid'] ?? 'N/A'), 'inline' => true],
-                ['name' => 'Alasan (OOC)', 'value' => empty($data['reason_ooc']) ? '-' : $decode($data['reason_ooc'])],
-                ['name' => 'Alasan (IC)', 'value' => empty($data['reason_ic']) ? '-' : $decode($data['reason_ic'])],
+                ['name' => 'Passport', 'value' => $decoded_data['passport'] ?? 'N/A', 'inline' => true],
+                ['name' => 'CID', 'value' => $decoded_data['cid'] ?? 'N/A', 'inline' => true],
+                ['name' => 'Alasan (OOC)', 'value' => empty($decoded_data['reason_ooc']) ? '-' : $decoded_data['reason_ooc']],
+                ['name' => 'Alasan (IC)', 'value' => empty($decoded_data['reason_ic']) ? '-' : $decoded_data['reason_ic']],
             ];
             break;
 
         case 'manual_duty_request_submitted':
-            $employee_name = $decode($data['employee_name'] ?? 'N/A');
+            $employee_name = $decoded_data['employee_name'] ?? 'N/A';
             $embed['title'] = "⏱️ Permohonan Input Jam Manual Baru!";
             $embed['description'] = "Karyawan **{$employee_name}** telah mengajukan permohonan input jam manual.";
             $embed['color'] = $colors['info'];
             $embed['fields'] = [
-                ['name' => 'Tanggal', 'value' => date('d/m/Y', strtotime($data['duty_date'] ?? '')), 'inline' => true],
-                ['name' => 'Periode Waktu', 'value' => date('H:i', strtotime($data['start_time'] ?? '')) . ' - ' . date('H:i', strtotime($data['end_time'] ?? '')), 'inline' => true],
-                ['name' => 'Durasi', 'value' => $decode($data['duration_text'] ?? 'N/A'), 'inline' => true],
+                ['name' => 'Tanggal', 'value' => date('d/m/Y', strtotime($decoded_data['duty_date'] ?? '')), 'inline' => true],
+                ['name' => 'Periode Waktu', 'value' => date('H:i', strtotime($decoded_data['start_time'] ?? '')) . ' - ' . date('H:i', strtotime($decoded_data['end_time'] ?? '')), 'inline' => true],
+                ['name' => 'Durasi', 'value' => $decoded_data['duration_text'] ?? 'N/A', 'inline' => true],
                 ['name' => 'Status', 'value' => '🟡 Pending', 'inline' => true],
-                ['name' => 'Alasan', 'value' => empty($data['reason']) ? '-' : $decode($data['reason'])],
+                ['name' => 'Alasan', 'value' => empty($decoded_data['reason']) ? '-' : $decoded_data['reason']],
             ];
             break;
 
         case 'request_status_update':
-            $employee_name = $decode($data['employee_name'] ?? 'N/A');
-            $approver_name = $decode($data['approved_by_name'] ?? 'N/A');
+            $employee_name = $decoded_data['employee_name'] ?? 'N/A';
+            $approver_name = $decoded_data['approved_by_name'] ?? 'N/A';
             $status_text = '';
             $icon = '';
             $color_status = $colors['info'];
 
-            if (($data['status'] ?? '') === 'approved') {
+            if (($decoded_data['status'] ?? '') === 'approved') {
                 $status_text = 'Disetujui';
                 $icon = '✅';
                 $color_status = $colors['success'];
-            } elseif (($data['status'] ?? '') === 'rejected') {
+            } elseif (($decoded_data['status'] ?? '') === 'rejected') {
                 $status_text = 'Ditolak';
                 $icon = '❌';
                 $color_status = $colors['danger'];
             }
             
-            $embed['title'] = "{$icon} Permohonan " . htmlspecialchars($data['request_type'] ?? 'N/A') . " Diperbarui!";
-            $embed['description'] = "Permohonan **" . htmlspecialchars($data['request_type'] ?? 'N/A') . "** dari **{$employee_name}** telah **{$status_text}** oleh **{$approver_name}**.";
+            $embed['title'] = "{$icon} Permohonan " . htmlspecialchars($decoded_data['request_type'] ?? 'N/A') . " Diperbarui!";
+            $embed['description'] = "Permohonan **" . htmlspecialchars($decoded_data['request_type'] ?? 'N/A') . "** dari **{$employee_name}** telah **{$status_text}** oleh **{$approver_name}**.";
             $embed['color'] = $color_status;
             $embed['fields'] = [
                 ['name' => 'Karyawan', 'value' => $employee_name, 'inline' => true],
@@ -338,13 +353,13 @@ function sendDiscordNotification($data, $type = 'info') {
             break;
 
         case 'admin_employee_action':
-            $admin_name = $decode($data['admin_name'] ?? 'N/A');
-            $target_name = $decode($data['target_employee_name'] ?? 'N/A');
+            $admin_name = $decoded_data['admin_name'] ?? 'N/A';
+            $target_name = $decoded_data['target_employee_name'] ?? 'N/A';
             $embed['color'] = $colors['employee_action'];
             
-            if (($data['action_type'] ?? '') === 'update_role') {
-                $old_role_display = getRoleDisplayName($data['old_value'] ?? 'N/A');
-                $new_role_display = getRoleDisplayName($data['new_value'] ?? 'N/A');
+            if (($decoded_data['action_type'] ?? '') === 'update_role') {
+                $old_role_display = getRoleDisplayName($decoded_data['old_value'] ?? 'N/A');
+                $new_role_display = getRoleDisplayName($decoded_data['new_value'] ?? 'N/A');
                 $embed['title'] = "👥 Perubahan Jabatan Anggota!";
                 $embed['description'] = "Jabatan **{$target_name}** telah diubah oleh **{$admin_name}**.";
                 $embed['fields'] = [
@@ -352,15 +367,15 @@ function sendDiscordNotification($data, $type = 'info') {
                     ['name' => 'Jabatan Lama', 'value' => $old_role_display, 'inline' => true],
                     ['name' => 'Jabatan Baru', 'value' => $new_role_display, 'inline' => true],
                 ];
-            } elseif (($data['action_type'] ?? '') === 'deactivate_employee') {
+            } elseif (($decoded_data['action_type'] ?? '') === 'deactivate_employee') {
                 $embed['title'] = "⛔ Anggota Dinonaktifkan!";
                 $embed['description'] = "Anggota **{$target_name}** telah dinonaktifkan oleh **{$admin_name}**.";
                 $embed['fields'] = [
                     ['name' => 'Anggota', 'value' => $target_name, 'inline' => true],
                     ['name' => 'Status', 'value' => '🔴 Tidak Aktif', 'inline' => true],
                 ];
-            } elseif (($data['action_type'] ?? '') === 'add_employee') {
-                $role_display = getRoleDisplayName($data['role'] ?? 'N/A');
+            } elseif (($decoded_data['action_type'] ?? '') === 'add_employee') {
+                $role_display = getRoleDisplayName($decoded_data['role'] ?? 'N/A');
                 $embed['title'] = "➕ Anggota Baru Ditambahkan!";
                 $embed['description'] = "Anggota baru **{$target_name}** ({$role_display}) telah ditambahkan oleh **{$admin_name}**.";
                 $embed['fields'] = [
@@ -372,25 +387,25 @@ function sendDiscordNotification($data, $type = 'info') {
             break;
 
         case 'admin_system_action':
-            $admin_name = $decode($data['admin_name'] ?? 'N/A');
+            $admin_name = $decode($decoded_data['admin_name'] ?? 'N/A');
             $embed['color'] = $colors['employee_action'];
-            if (($data['action_type'] ?? '') === 'reset_weekly_data') {
+            if (($decoded_data['action_type'] ?? '') === 'reset_weekly_data') {
                 $embed['title'] = "🔄 Data Mingguan Direset!";
                 $embed['description'] = "Data jam tugas dan penjualan mingguan telah direset oleh **{$admin_name}**.";
             }
             break;
 
         case 'sale_input':
-            $employee_name = $decode($data['employee_name'] ?? 'N/A');
-            $sake = $data['paket_sake'] ?? 0;
-            $anggur_merah = $data['paket_anggur_merah'] ?? 0;
-            $tuak = $data['paket_tuak'] ?? 0;
-            $soju = $data['paket_soju'] ?? 0;
-            $spicy1 = $data['paket_spicy_1'] ?? 0;
-            $spicy2 = $data['paket_spicy_2'] ?? 0;
-            $spicy3 = $data['paket_spicy_3'] ?? 0;
-            $vip = $data['paket_vip_person'] ?? 0;
-            $special = $data['paket_special_30min'] ?? 0;
+            $employee_name = $decode($decoded_data['employee_name'] ?? 'N/A');
+            $sake = $decoded_data['paket_sake'] ?? 0;
+            $anggur_merah = $decoded_data['paket_anggur_merah'] ?? 0;
+            $tuak = $decoded_data['paket_tuak'] ?? 0;
+            $soju = $decoded_data['paket_soju'] ?? 0;
+            $spicy1 = $decoded_data['paket_spicy_1'] ?? 0;
+            $spicy2 = $decoded_data['paket_spicy_2'] ?? 0;
+            $spicy3 = $decoded_data['paket_spicy_3'] ?? 0;
+            $vip = $decoded_data['paket_vip_person'] ?? 0;
+            $special = $decoded_data['paket_special_30min'] ?? 0;
             
             $total_items_sold = $sake + $anggur_merah + $tuak + $soju + $spicy1 + $spicy2 + $spicy3 + $vip + $special;
 
@@ -398,8 +413,8 @@ function sendDiscordNotification($data, $type = 'info') {
             $embed['description'] = "**{$employee_name}** telah menginput data penjualan. Detail di bawah:";
             $embed['color'] = $colors['success'];
             $embed['fields'] = [
-                ['name' => 'Tanggal', 'value' => date('d/m/Y', strtotime($data['date'] ?? '')), 'inline' => true],
-                ['name' => 'Waktu Input', 'value' => date('H:i:s', strtotime($data['input_time'] ?? '')), 'inline' => true],
+                ['name' => 'Tanggal', 'value' => date('d/m/Y', strtotime($decoded_data['date'] ?? '')), 'inline' => true],
+                ['name' => 'Waktu Input', 'value' => date('H:i:s', strtotime($decoded_data['input_time'] ?? '')), 'inline' => true],
             ];
 
             // Detail Paket
@@ -417,16 +432,16 @@ function sendDiscordNotification($data, $type = 'info') {
             break;
         
         case 'sale_deleted':
-            $employee_name = $decode($data['employee_name'] ?? 'N/A');
-            $sales_date_time = $decode($data['sales_date_time'] ?? 'N/A');
+            $employee_name = $decode($decoded_data['employee_name'] ?? 'N/A');
+            $sales_date_time = $decode($decoded_data['sales_date_time'] ?? 'N/A');
             
-            $sake = $data['paket_sake'] ?? 0;
-            $anggur_merah = $data['paket_anggur_merah'] ?? 0;
-            $tuak = $data['paket_tuak'] ?? 0;
-            $soju = $data['paket_soju'] ?? 0;
-            $spicy1 = $data['paket_spicy_1'] ?? 0;
-            $spicy2 = $data['paket_spicy_2'] ?? 0;
-            $spicy3 = $data['paket_spicy_3'] ?? 0;
+            $sake = $decoded_data['paket_sake'] ?? 0;
+            $anggur_merah = $decoded_data['paket_anggur_merah'] ?? 0;
+            $tuak = $decoded_data['paket_tuak'] ?? 0;
+            $soju = $decoded_data['paket_soju'] ?? 0;
+            $spicy1 = $decoded_data['paket_spicy_1'] ?? 0;
+            $spicy2 = $decoded_data['paket_spicy_2'] ?? 0;
+            $spicy3 = $decoded_data['paket_spicy_3'] ?? 0;
             
             $total_items_deleted = $sake + $anggur_merah + $tuak + $soju + $spicy1 + $spicy2 + $spicy3;
 
@@ -449,8 +464,8 @@ function sendDiscordNotification($data, $type = 'info') {
             $stock_type_name = $is_refrigerator ? 'Kulkas' : 'Gudang';
             $action_text = $is_deposit ? 'DEPOSIT (Masuk)' : 'WITHDRAW (Keluar)';
             $icon = $is_deposit ? '➕' : '➖';
-            $employee_name = $decode($data['employee_name'] ?? 'N/A');
-            $product_list = $data['product_list'] ?? [];
+            $employee_name = $decode($decoded_data['employee_name'] ?? 'N/A');
+            $product_list = $decoded_data['product_list'] ?? [];
 
             $embed['title'] = "{$icon} Transaksi Stok {$stock_type_name}: {$action_text}!";
             $embed['description'] = "**{$employee_name}** telah melakukan transaksi stok {$stock_type_name}.";
@@ -462,7 +477,8 @@ function sendDiscordNotification($data, $type = 'info') {
             ];
             $detail_list = "";
             foreach ($product_list as $product => $qty) {
-                $detail_list .= "- " . htmlspecialchars(str_replace('_', ' ', $product)) . " (`{$qty}`)\n";
+                // Saat mengakses $product, itu sudah di-decode oleh fungsi map di atas
+                $detail_list .= "- " . str_replace('_', ' ', $product) . " (`{$qty}`)\n";
             }
             $fields[] = ['name' => 'Detail Item:', 'value' => trim($detail_list)];
 
@@ -470,9 +486,9 @@ function sendDiscordNotification($data, $type = 'info') {
             break;
 
         case 'room_booking_submitted':
-            $room_id = $decode($data['room_id'] ?? 'N/A');
-            $booking_name = $decode($data['booking_name'] ?? 'N/A');
-            $booking_datetime = $decode($data['booking_datetime'] ?? 'N/A');
+            $room_id = $decoded_data['room_id'] ?? 'N/A';
+            $booking_name = $decoded_data['booking_name'] ?? 'N/A';
+            $booking_datetime = $decoded_data['booking_datetime'] ?? 'N/A';
             $embed['title'] = "🛎️ Permintaan Booking Ruangan Baru!";
             $embed['description'] = "Permintaan booking ruangan baru telah diajukan oleh **{$booking_name}**.";
             $embed['color'] = $colors['info'];
@@ -484,10 +500,10 @@ function sendDiscordNotification($data, $type = 'info') {
             break;
 
         case 'booking_status_updated':
-            $room_name = $decode($data['room_name'] ?? 'N/A');
-            $booking_name = $decode($data['booking_name'] ?? 'N/A');
-            $admin_name = $decode($data['admin_name'] ?? 'N/A');
-            $action = $decode($data['action'] ?? 'N/A');
+            $room_name = $decoded_data['room_name'] ?? 'N/A';
+            $booking_name = $decoded_data['booking_name'] ?? 'N/A';
+            $admin_name = $decoded_data['admin_name'] ?? 'N/A';
+            $action = $decoded_data['action'] ?? 'N/A';
 
             $status_text = '';
             $status_icon = '';
@@ -518,10 +534,10 @@ function sendDiscordNotification($data, $type = 'info') {
             break;
 
         case 'payment_status_updated':
-            $room_name = $decode($data['room_name'] ?? 'N/A');
-            $booking_name = $decode($data['booking_name'] ?? 'N/A');
-            $admin_name = $decode($data['admin_name'] ?? 'N/A');
-            $action = $decode($data['action'] ?? 'N/A');
+            $room_name = $decoded_data['room_name'] ?? 'N/A';
+            $booking_name = $decoded_data['booking_name'] ?? 'N/A';
+            $admin_name = $decoded_data['admin_name'] ?? 'N/A';
+            $action = $decoded_data['action'] ?? 'N/A';
             
             $status_text = '';
             $status_icon = '';
@@ -549,11 +565,11 @@ function sendDiscordNotification($data, $type = 'info') {
             break;
             
         case 'duty_log_deleted': 
-            $employee_name = $decode($data['employee_name'] ?? 'N/A');
-            $admin_name = $decode($data['admin_name'] ?? 'N/A');
-            $duty_start_time = date('d/m/Y H:i', strtotime($data['duty_start'] ?? ''));
-            $duty_end_time = ($data['duty_end'] ?? null) ? date('H:i', strtotime($data['duty_end'])) : 'Belum Selesai';
-            $duration_display = formatDuration($data['duration_minutes'] ?? 0);
+            $employee_name = $decoded_data['employee_name'] ?? 'N/A';
+            $admin_name = $decoded_data['admin_name'] ?? 'N/A';
+            $duty_start_time = date('d/m/Y H:i', strtotime($decoded_data['duty_start'] ?? ''));
+            $duty_end_time = ($decoded_data['duty_end'] ?? null) ? date('H:i', strtotime($decoded_data['duty_end'])) : 'Belum Selesai';
+            $duration_display = formatDuration($decoded_data['duration_minutes'] ?? 0);
 
             $embed['title'] = "🗑️ Log Jam Kerja Dihapus!";
             $embed['description'] = "Log jam kerja anggota **{$employee_name}** telah dihapus oleh **{$admin_name}**.";
@@ -569,8 +585,8 @@ function sendDiscordNotification($data, $type = 'info') {
             break;
 
         case 'warning_letter_deleted': 
-            $employee_name = $decode($data['employee_name'] ?? 'N/A');
-            $admin_name = $decode($data['admin_name'] ?? 'N/A');
+            $employee_name = $decoded_data['employee_name'] ?? 'N/A';
+            $admin_name = $decoded_data['admin_name'] ?? 'N/A';
             $embed['title'] = "🗑️ Surat Peringatan Dihapus!";
             $embed['description'] = "Surat Peringatan untuk **{$employee_name}** telah dihapus oleh **{$admin_name}**.";
             $embed['color'] = $colors['danger'];
@@ -581,10 +597,10 @@ function sendDiscordNotification($data, $type = 'info') {
             break;
 
         case 'warning_letter_issued': 
-            $employee_name = $decode($data['employee_name'] ?? 'N/A');
-            $admin_name = $decode($data['admin_name'] ?? 'N/A');
-            $sp_type = $decode($data['sp_type'] ?? 'N/A');
-            $reason = $decode($data['reason'] ?? 'N/A');
+            $employee_name = $decoded_data['employee_name'] ?? 'N/A';
+            $admin_name = $decoded_data['admin_name'] ?? 'N/A';
+            $sp_type = $decoded_data['sp_type'] ?? 'N/A';
+            $reason = $decoded_data['reason'] ?? 'N/A';
             $embed['title'] = "⚠️ Surat Peringatan Dikeluarkan!";
             $embed['description'] = "Surat Peringatan **{$sp_type}** untuk **{$employee_name}** telah dikeluarkan oleh **{$admin_name}**.";
             $embed['color'] = $colors['warning'];
@@ -597,9 +613,9 @@ function sendDiscordNotification($data, $type = 'info') {
             break;
 
         case 'new_employee_request_submitted':
-            $employee_name = $decode($data['employee_name'] ?? 'N/A');
-            $new_employee_name = $decode($data['new_employee_name'] ?? 'N/A');
-            $requested_role = $decode($data['requested_role'] ?? 'N/A');
+            $employee_name = $decoded_data['employee_name'] ?? 'N/A';
+            $new_employee_name = $decoded_data['new_employee_name'] ?? 'N/A';
+            $requested_role = $decoded_data['requested_role'] ?? 'N/A';
             $embed['title'] = "➕ Permintaan Anggota Baru!";
             $embed['description'] = "Permintaan untuk menambahkan anggota baru **{$new_employee_name}** ({$requested_role}) telah diajukan oleh **{$employee_name}**.";
             $embed['color'] = $colors['info'];
@@ -611,9 +627,9 @@ function sendDiscordNotification($data, $type = 'info') {
             break;
 
         case 'password_reset_request_submitted':
-            $employee_name = $decode($data['employee_name'] ?? 'N/A');
-            $target_employee_name = $decode($data['target_employee_name'] ?? 'N/A');
-            $reset_type_text = ($data['reset_type'] ?? '') === 'new' ? 'Kata Sandi Baru' : 'Kata Sandi Default';
+            $employee_name = $decoded_data['employee_name'] ?? 'N/A';
+            $target_employee_name = $decoded_data['target_employee_name'] ?? 'N/A';
+            $reset_type_text = ($decoded_data['reset_type'] ?? '') === 'new' ? 'Kata Sandi Baru' : 'Kata Sandi Default';
             $embed['title'] = "🔄 Permintaan Reset Kata Sandi!";
             $embed['description'] = "Permintaan reset kata sandi untuk **{$target_employee_name}** telah diajukan oleh **{$employee_name}**.";
             $embed['color'] = $colors['warning'];
@@ -626,9 +642,9 @@ function sendDiscordNotification($data, $type = 'info') {
             
         case 'salary_paid_single':
         case 'salary_unpaid_single':
-            $employee_name = $decode($data['employee_name'] ?? 'N/A');
-            $status_text = $decode($data['status'] ?? 'N/A');
-            $admin_name = $decode($data['admin_name'] ?? 'N/A');
+            $employee_name = $decode($decoded_data['employee_name'] ?? 'N/A');
+            $status_text = $decode($decoded_data['status'] ?? 'N/A');
+            $admin_name = $decode($decoded_data['admin_name'] ?? 'N/A');
             
             $embed['title'] = "💸 Status Gaji Diperbarui!";
             $embed['description'] = "Gaji **{$employee_name}** diubah menjadi **{$status_text}** oleh **{$admin_name}**.";
@@ -641,7 +657,7 @@ function sendDiscordNotification($data, $type = 'info') {
             break;
             
         case 'salary_unpaid_all':
-            $admin_name = $decode($data['admin_name'] ?? 'N/A');
+            $admin_name = $decode($decoded_data['admin_name'] ?? 'N/A');
             $embed['title'] = "⚠️ Reset Gaji Massal!";
             $embed['description'] = "Semua status pembayaran gaji anggota **Direset** menjadi **Belum Dibayar** oleh **{$admin_name}**.";
             $embed['color'] = $colors['salary_unpaid_all'];
@@ -652,7 +668,7 @@ function sendDiscordNotification($data, $type = 'info') {
             break;
             
         case 'daily_absent_recap':
-            $absent_list = $data['absent_list'] ?? [];
+            $absent_list = $decoded_data['absent_list'] ?? [];
             $embed['title'] = "🚨 Rekap Absensi (Absen > 3 Hari Beruntun)";
             $embed['description'] = "Berikut adalah anggota yang tercatat **Absen** atau **Tanpa Keterangan Izin** lebih dari 3 hari dalam minggu ini:";
             $embed['color'] = $colors['daily_absent_recap'];
@@ -663,8 +679,7 @@ function sendDiscordNotification($data, $type = 'info') {
             } else {
                 $list_value = "";
                 foreach ($absent_list as $employee_name) {
-                    // Decode nama sebelum ditampilkan
-                    $list_value .= "- **{$decode($employee_name)}**\n";
+                    $list_value .= "- **{$employee_name}**\n";
                 }
                 $embed['fields'][] = [
                     'name' => 'Daftar Anggota Bermasalah:', 
@@ -678,11 +693,31 @@ function sendDiscordNotification($data, $type = 'info') {
                 ];
             }
             break;
+            
+        case 'daily_duty_recap':
+            $duty_list = $decoded_data['duty_list'] ?? [];
+            $embed['title'] = "⏱️ Rekap Total Jam Duty Anggota";
+            $embed['description'] = "Berikut adalah total waktu duty semua anggota (diurutkan dari terlama):";
+            $embed['color'] = $colors['daily_duty_recap'];
 
+            if (empty($duty_list)) {
+                $embed['description'] = "Tidak ada anggota yang memiliki jam duty yang telah diselesaikan (*completed*).";
+            } else {
+                $list_value = "";
+                foreach ($duty_list as $item) {
+                    $list_value .= "• **{$item['name']}**: `{$item['duration']}`\n";
+                }
+                $embed['fields'][] = [
+                    'name' => 'Nama Anggota & Total Waktu Duty',
+                    'value' => trim($list_value),
+                    'inline' => false
+                ];
+            }
+            break;
+            
         default:
             // Fallback for unrecognized messages
             $embed['title'] = "ℹ️ Notifikasi Umum";
-            // Konten mentah hanya akan dikirim jika data adalah array yang tidak dikenali
             $embed['description'] = $decode(is_array($data) ? json_encode($data) : $data);
             $embed['color'] = $colors['info'];
             break;

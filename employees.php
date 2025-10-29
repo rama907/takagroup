@@ -15,7 +15,74 @@ $pending_requests_count = getPendingRequestCount();
 $success = null;
 $error = null;
 
-// Handle action untuk manual Off Duty
+// --- Handle action untuk manual On Duty (NEW LOGIC) ---
+if (($_SERVER['REQUEST_METHOD'] === 'POST') && (isset($_POST['action']) && $_POST['action'] === 'manual_on_duty')) {
+    $employee_id_to_on_duty = (int)($_POST['employee_id'] ?? 0);
+
+    if ($employee_id_to_on_duty <= 0) {
+        $error = "ID anggota tidak valid!";
+    } elseif ($employee_id_to_on_duty == $user['id']) {
+        $error = "Anda tidak bisa meng-on duty diri sendiri secara manual dari sini. Silakan gunakan tombol On Duty di Dashboard.";
+    } else {
+        $conn->begin_transaction();
+        try {
+            $stmt_get_employee = $conn->prepare("SELECT name, is_on_duty FROM employees WHERE id = ? AND status = 'active'");
+            if (!$stmt_get_employee) {
+                throw new Exception("Gagal menyiapkan query ambil data anggota: " . $conn->error);
+            }
+            $stmt_get_employee->bind_param("i", $employee_id_to_on_duty);
+            $stmt_get_employee->execute();
+            $employee_data = $stmt_get_employee->get_result()->fetch_assoc();
+            $stmt_get_employee->close();
+
+            if (!$employee_data || $employee_data['is_on_duty']) {
+                throw new Exception("Anggota tidak ditemukan atau sudah On Duty.");
+            }
+            
+            // 1. Update status employee
+            $stmt_update_employee = $conn->prepare("UPDATE employees SET is_on_duty = TRUE, current_duty_start = NOW() WHERE id = ?");
+            if (!$stmt_update_employee) {
+                throw new Exception("Gagal menyiapkan query update status anggota: " . $conn->error);
+            }
+            $stmt_update_employee->bind_param("i", $employee_id_to_on_duty);
+            if (!$stmt_update_employee->execute()) {
+                throw new Exception("Gagal mengupdate status anggota: " . $stmt_update_employee->error);
+            }
+            $stmt_update_employee->close();
+
+            // 2. Insert new active duty log (simulating manual clock-in)
+            // Log manual di sini dicatat sebagai 'active' karena merupakan awal shift
+            $stmt_insert_log = $conn->prepare("INSERT INTO duty_logs (employee_id, duty_start, is_manual, approved_by, status) VALUES (?, NOW(), 1, ?, 'active')");
+            if (!$stmt_insert_log) {
+                throw new Exception("Gagal membuat log duty baru: " . $conn->error);
+            }
+            $stmt_insert_log->bind_param("ii", $employee_id_to_on_duty, $user['id']);
+            if (!$stmt_insert_log->execute()) {
+                throw new Exception("Gagal membuat log duty baru: " . $stmt_insert_log->error);
+            }
+            $stmt_insert_log->close();
+
+            $conn->commit();
+            $success = "Anggota " . htmlspecialchars($employee_data['name']) . " berhasil diatur **On Duty** secara manual!";
+
+            // Kirim notifikasi Discord
+            sendDiscordNotification([
+                'employee_name' => htmlspecialchars($employee_data['name']),
+                'action_type' => 'Manual On Duty',
+                'admin_name' => htmlspecialchars($user['name']),
+                'event_type' => 'clock_in', 
+            ], 'clock_event');
+            
+        } catch (Exception $e) {
+            $conn->rollback();
+            $error = "Terjadi kesalahan saat meng-on duty anggota: " . $e->getMessage();
+        }
+    }
+}
+// --- AKHIR LOGIKA MANUAL ON DUTY ---
+
+
+// --- Handle action untuk manual Off Duty (EXISTING LOGIC) ---
 if (($_SERVER['REQUEST_METHOD'] === 'POST') && (isset($_POST['action']) && $_POST['action'] === 'manual_off_duty')) {
     $employee_id_to_off_duty = (int)($_POST['employee_id'] ?? 0);
 
@@ -66,7 +133,6 @@ if (($_SERVER['REQUEST_METHOD'] === 'POST') && (isset($_POST['action']) && $_POS
                 }
                 $stmt_update_log->close();
             } else {
-                // Jika tidak ada active log, mungkin ada inkonsistensi data, tapi tetap lanjutkan update status employee
                 error_log("Warning: Employee " . $employee_data['name'] . " is_on_duty=TRUE but no active duty_log found.");
             }
 
@@ -82,7 +148,7 @@ if (($_SERVER['REQUEST_METHOD'] === 'POST') && (isset($_POST['action']) && $_POS
             $stmt_update_employee->close();
 
             $conn->commit(); // Commit transaksi
-            $success = "Anggota " . htmlspecialchars($employee_data['name']) . " berhasil diatur Off Duty!";
+            $success = "Anggota " . htmlspecialchars($employee_data['name']) . " berhasil diatur **Off Duty** secara manual!";
 
             // Kirim notifikasi Discord
             sendDiscordNotification([
@@ -90,7 +156,7 @@ if (($_SERVER['REQUEST_METHOD'] === 'POST') && (isset($_POST['action']) && $_POS
                 'request_type' => 'Manual Off Duty',
                 'status' => 'completed',
                 'approved_by_name' => htmlspecialchars($user['name']),
-            ], 'request_status_update'); // Menggunakan tipe yang sama dengan update status request untuk konsistensi
+            ], 'request_status_update'); 
             
         } catch (Exception $e) {
             $conn->rollback(); // Rollback transaksi jika ada error
@@ -98,6 +164,8 @@ if (($_SERVER['REQUEST_METHOD'] === 'POST') && (isset($_POST['action']) && $_POS
         }
     }
 }
+// --- AKHIR LOGIKA MANUAL OFF DUTY ---
+
 
 // Get all employees
 $stmt = $conn->query("
@@ -216,8 +284,17 @@ foreach ($employees as $key => $employee) {
                                     </div>
                                 <?php endif; ?>
 
-                                <?php if ($employee['is_on_duty'] && $employee['id'] != $user['id']): // Hanya tampilkan jika On Duty dan bukan diri sendiri ?>
-                                <div class="manual-off-duty-action" style="margin-top: var(--spacing-md);">
+                                <?php if ($employee['id'] != $user['id']): ?>
+                                <div class="manual-duty-actions" style="margin-top: var(--spacing-md);">
+                                    <?php if (!$employee['is_on_duty']): ?>
+                                    <form method="POST" onsubmit="return confirm('Yakin ingin memulai sesi On Duty manual untuk <?= htmlspecialchars($employee['name']) ?> sekarang?');">
+                                        <input type="hidden" name="action" value="manual_on_duty">
+                                        <input type="hidden" name="employee_id" value="<?= $employee['id'] ?>">
+                                        <button type="submit" class="btn btn-success btn-sm">
+                                            <span class="btn-icon">✅</span> On Duty Manual
+                                        </button>
+                                    </form>
+                                    <?php else: ?>
                                     <form method="POST" onsubmit="return confirm('Yakin ingin mengakhiri sesi On Duty untuk <?= htmlspecialchars($employee['name']) ?> sekarang? Tindakan ini akan mencatat waktu Off Duty saat ini.');">
                                         <input type="hidden" name="action" value="manual_off_duty">
                                         <input type="hidden" name="employee_id" value="<?= $employee['id'] ?>">
@@ -225,6 +302,7 @@ foreach ($employees as $key => $employee) {
                                             <span class="btn-icon">❌</span> Off Duty Manual
                                         </button>
                                     </form>
+                                    <?php endif; ?>
                                 </div>
                                 <?php endif; ?>
                             </div>
