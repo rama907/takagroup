@@ -1,9 +1,15 @@
 <?php
-// File: config.php (Modifikasi Akhir - Perbaikan Recursive Decode)
+// File: config.php (Final Version for Discord API)
 
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL & ~E_NOTICE);
+
+// --- KONSTANTA BARU UNTUK DISCORD BOT API ---
+// GANTI 'MASUKKAN_KUNCI_RAHASIA_ANDA_DISINI' dengan kunci unik (contoh: aBc123XyZ789)
+define('API_SECRET_KEY', 'oxIRDdPa8wsfx6xYJO1IHxr6RiXFsGKf'); 
+// -------------------------------------------
+
 // Database configuration
 define('DB_HOST', 'localhost');
 define('DB_USER', 'imjutwnp_grand_company_db');
@@ -44,6 +50,18 @@ function getCurrentUser() {
     $stmt->bind_param("i", $_SESSION['user_id']);
     $stmt->execute();
     return $stmt->get_result()->fetch_assoc();
+}
+
+// NEW FUNCTION: Get Employee by Discord ID (Digunakan oleh API Bot)
+function getEmployeeByDiscordId($discordId) {
+    global $conn;
+    $stmt = $conn->prepare("SELECT * FROM employees WHERE discord_id = ? AND status = 'active'");
+    if (!$stmt) return false;
+    $stmt->bind_param("s", $discordId);
+    $stmt->execute();
+    $result = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    return $result;
 }
 
 // Function to format duration
@@ -148,15 +166,15 @@ function sendDiscordNotification($data, $type = 'info') {
     $warehouse_webhook_url = 'https://discord.com/api/webhooks/1423652925330297003/Bq7P1EBFNJYQUJNfvUycuX3_CAfL34yl18gmUWnT6woOwabt6gbAejF18CHdGTtaCwIJ';
     $warehouse_bot_name = "Elysium Gudang Bot";
     
-    // NEW Webhook 5: Penjualan
+    // Webhook 5: Penjualan
     $sales_webhook_url = 'https://discord.com/api/webhooks/1428713282058850326/Ect0UAvVTPV9aO7y7y4zIhwPoqbAsQiAzWfsGLGv5Ll6desxAcy_aGG72WpRa6XDY0G4'; 
     $sales_bot_name = "Elysium Sales Bot";
     
-    // NEW Webhook 6: Laporan Rekap Absensi
+    // Webhook 6: Laporan Rekap Absensi
     $report_webhook_url = 'https://discord.com/api/webhooks/1428713605041488035/hs5-hnUVGxx0KXzSe1XqT-Dl5scQUXfc-KYMUIIbzfEWpMzVQN3_FAeyYI9AscWTR2v0'; 
     $report_bot_name = "Elysium Report Bot";
 
-    // NEW Webhook 7: Rekap Jam Duty
+    // Webhook 7: Rekap Jam Duty
     $duty_recap_webhook_url = 'https://discord.com/api/webhooks/1431186776592089151/8V_8Nox-4vQhFW7wtAD7VVpr3pEDy3f08cxbQwJ9kGRCKBQaHjHtyPsraSbdRYjNkHa2'; 
     $duty_recap_bot_name = "Elysium Duty Recap Bot";
 
@@ -178,7 +196,8 @@ function sendDiscordNotification($data, $type = 'info') {
 
     $refrigerator_types = ['refrigerator_deposit', 'refrigerator_withdraw'];
     $warehouse_types = ['warehouse_deposit', 'warehouse_withdraw'];
-    
+    $general_types = ['clock_event', 'admin_employee_action', 'admin_system_action', 'salary_paid_single', 'salary_unpaid_single', 'salary_unpaid_all'];
+
     // Routing Logic
     if (in_array($type, $refrigerator_types)) {
         if (strpos($refrigerator_webhook_url, 'WEBHOOK_URL_HERE') === false) { $webhooks_to_send[] = $refrigerator_webhook_url; }
@@ -249,8 +268,12 @@ function sendDiscordNotification($data, $type = 'info') {
     // FIX PENTING: Perbaikan fungsi rekursif untuk HTML decoding
     $decode = function($str) use (&$decode) {
         if (is_array($str)) {
-            // Menggunakan array_map rekursif
-            return array_map($decode, $str);
+            // Menggunakan array_map rekursif (dipanggil melalui $decode)
+            $new_array = [];
+            foreach ($str as $key => $value) {
+                $new_array[$key] = $decode($value);
+            }
+            return $new_array;
         }
         // Hanya decode jika itu string
         return is_string($str) ? htmlspecialchars_decode($str, ENT_QUOTES) : $str;
@@ -477,7 +500,6 @@ function sendDiscordNotification($data, $type = 'info') {
             ];
             $detail_list = "";
             foreach ($product_list as $product => $qty) {
-                // Saat mengakses $product, itu sudah di-decode oleh fungsi map di atas
                 $detail_list .= "- " . str_replace('_', ' ', $product) . " (`{$qty}`)\n";
             }
             $fields[] = ['name' => 'Detail Item:', 'value' => trim($detail_list)];

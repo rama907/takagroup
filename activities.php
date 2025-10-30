@@ -42,7 +42,7 @@ if (!function_exists('getRoleDisplayName')) {
 $success_message = null;
 $error_message = null;
 
-// --- Handle Delete Duty Log ---
+// --- Handle Delete Duty Log (Existing Logic) ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'delete_duty_log') {
     $duty_log_id = (int)($_POST['duty_log_id'] ?? 0);
     $employee_id_of_log = $user['id']; // ID karyawan yang sedang login
@@ -87,10 +87,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             // Hapus log duty
             $stmt_delete = $conn->prepare("DELETE FROM duty_logs WHERE id = ? AND employee_id = ?");
             if (!$stmt_delete) {
-                // --- KODE DIAGNOSTIK SEMENTARA ---
-                error_log("Error preparing delete statement: " . $conn->error); // Log ke server error log
-                die("Fatal Error: Gagal menyiapkan query hapus log duty. MySQL Error: " . $conn->error); // Paksa berhenti dan tampilkan error
-                // --- AKHIR KODE DIAGNOSTIK SEMENTARA ---
+                die("Fatal Error: Gagal menyiapkan query hapus log duty. MySQL Error: " . $conn->error); 
             }
             $stmt_delete->bind_param("ii", $duty_log_id, $employee_id_of_log);
             
@@ -98,10 +95,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 $conn->commit();
                 $success_message = "Log jam kerja pada tanggal " . date('d/m/Y H:i', strtotime($log_details['duty_start'])) . " berhasil dihapus.";
 
-                // Kirim notifikasi Discord (seperti di duty-history-management.php)
                 sendDiscordNotification([
-                    'employee_name' => $user['name'], // Pengguna yang menghapus lognya sendiri
-                    'admin_name' => $user['name'], // Dalam konteks ini, user adalah admin bagi dirinya sendiri untuk Discord notif
+                    'employee_name' => $user['name'], 
+                    'admin_name' => $user['name'], 
                     'duty_start' => $log_details['duty_start'],
                     'duty_end' => $log_details['duty_end'],
                     'duration_minutes' => $log_details['duration_minutes']
@@ -161,8 +157,7 @@ $total_sales_summary = [
     'paket_spicy_1' => 0,
     'paket_spicy_2' => 0,
     'paket_spicy_3' => 0,
-    'total_penjualan' => 0, // Baru: total paket makan & minum + paket snack
-    'total_masak_keseluruhan' => 0 // Baru: total masak paket + masak snack
+    'total_penjualan' => 0,
 ];
 $stmt = $conn->prepare("
     SELECT
@@ -270,7 +265,25 @@ if ($stmt) {
                                     <tbody>
                                         <?php foreach ($activities as $activity): ?>
                                         <?php
-                                        $is_long_duty = ($activity['duration_minutes'] > 420);
+                                        // Cek jika durasi melebihi 7 jam (420 menit) - hanya berlaku untuk log completed
+                                        $is_long_duty = ($activity['status'] === 'completed' && $activity['duration_minutes'] > 420);
+                                        $is_active = $activity['status'] === 'active';
+                                        
+                                        // Tentukan TIPE tampilan
+                                        $display_type = 'Otomatis';
+                                        $status_class = 'info';
+                                        if ($activity['is_manual'] == 1) {
+                                            $display_type = 'Manual (Web)';
+                                            $status_class = 'warning';
+                                        } elseif ($activity['is_manual'] == 2) {
+                                            $display_type = 'Discord/Bot';
+                                            $status_class = 'primary';
+                                        }
+                                        
+                                        // Tentukan durasi tampilan
+                                        $display_duration = $is_active ? 'Berlangsung' : formatDuration($activity['duration_minutes']);
+                                        $display_end_time = $activity['duty_end'] ? date('H:i', strtotime($activity['duty_end'])) : '-';
+                                        $display_status = ucfirst($activity['status']);
                                         ?>
                                         <tr class="<?= $is_long_duty ? 'long-duty-row' : '' ?>">
                                             <td data-label="Tanggal">
@@ -280,10 +293,10 @@ if ($stmt) {
                                                 <?= date('H:i', strtotime($activity['duty_start'])) ?>
                                             </td>
                                             <td data-label="Selesai">
-                                                <?= $activity['duty_end'] ? date('H:i', strtotime($activity['duty_end'])) : '-' ?>
+                                                <?= $display_end_time ?>
                                             </td>
                                             <td data-label="Durasi">
-                                                <strong><?= $activity['duty_end'] ? formatDuration($activity['duration_minutes']) : 'Berlangsung' ?></strong>
+                                                <strong><?= $display_duration ?></strong>
                                                 <?php if ($is_long_duty): ?>
                                                     <span class="long-duty-alert">
                                                         <span class="btn-icon">⚠️</span> >7 Jam
@@ -291,24 +304,25 @@ if ($stmt) {
                                                 <?php endif; ?>
                                             </td>
                                             <td data-label="Tipe">
-                                                <span class="status-badge status-<?= $activity['is_manual'] ? 'warning' : 'info' ?>">
-                                                    <?= $activity['is_manual'] ? 'Manual' : 'Otomatis' ?>
+                                                <span class="status-badge status-<?= $status_class ?>">
+                                                    <?= $display_type ?>
                                                 </span>
                                             </td>
                                             <td data-label="Status">
                                                 <span class="status-badge status-<?= $activity['status'] ?>">
-                                                    <?= ucfirst($activity['status']) ?>
+                                                    <?= $display_status ?>
                                                 </span>
                                             </td>
                                             <td data-label="Aksi">
-                                                <?php if ($activity['status'] !== 'pending_approval'): // Hanya bisa dihapus jika bukan pending approval ?>
-                                                <form method="POST" onsubmit="return confirm('Yakin ingin menghapus log jam kerja ini? Aksi ini TIDAK DAPAT DIBATALKAN.')">
+                                                <?php if ($activity['status'] !== 'pending_approval'): ?>
+                                                <form method="POST" onsubmit="return confirm('Yakin ingin menghapus log jam kerja ini? Aksi ini TIDAK DAPAT DIBATALKAN. Catatan: Jika log ini aktif, status On Duty Anda juga akan direset.')">
                                                     <input type="hidden" name="action" value="delete_duty_log">
                                                     <input type="hidden" name="duty_log_id" value="<?= $activity['id'] ?>">
                                                     <button type="submit" class="btn btn-danger btn-sm">Hapus</button>
                                                 </form>
                                                 <?php else: ?>
-                                                    - <?php endif; ?>
+                                                    - 
+                                                <?php endif; ?>
                                             </td>
                                         </tr>
                                         <?php endforeach; ?>

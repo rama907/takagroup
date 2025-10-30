@@ -34,11 +34,14 @@ if ($stmt_sp) {
 // Handle duty actions
 if (isset($_POST['action']) && $_POST['action'] === 'on_duty') {
     if (!$user['is_on_duty']) {
+        
+        // 1. Update status employee
         $stmt = $conn->prepare("UPDATE employees SET is_on_duty = TRUE, current_duty_start = NOW() WHERE id = ?");
         $stmt->bind_param("i", $user['id']);
         $stmt->execute();
         
-        $stmt = $conn->prepare("INSERT INTO duty_logs (employee_id, duty_start) VALUES (?, NOW())");
+        // 2. Insert log (is_manual=0, status='active' for automatic clock-in)
+        $stmt = $conn->prepare("INSERT INTO duty_logs (employee_id, duty_start, is_manual, status) VALUES (?, NOW(), 0, 'active')");
         $stmt->bind_param("i", $user['id']);
         $stmt->execute();
         
@@ -50,38 +53,62 @@ if (isset($_POST['action']) && $_POST['action'] === 'on_duty') {
 
 if (isset($_POST['action']) && $_POST['action'] === 'off_duty') {
     if ($user['is_on_duty']) {
-        $stmt = $conn->prepare("SELECT id FROM duty_logs WHERE employee_id = ? AND duty_end IS NULL ORDER BY id DESC LIMIT 1");
-        $stmt->bind_param("i", $user['id']);
-        $stmt->execute();
-        $log = $stmt->get_result()->fetch_assoc();
-        
-        if ($log) {
-            $stmt = $conn->prepare("UPDATE duty_logs SET duty_end = NOW(), duration_minutes = TIMESTAMPDIFF(MINUTE, duty_start, NOW()), status = 'completed' WHERE id = ?");
-            $stmt->bind_param("i", $log['id']);
+        $conn->begin_transaction();
+        try {
+            $stmt = $conn->prepare("SELECT id, duty_start FROM duty_logs WHERE employee_id = ? AND duty_end IS NULL ORDER BY id DESC LIMIT 1");
+            $stmt->bind_param("i", $user['id']);
             $stmt->execute();
-        }
-        
-        $stmt = $conn->prepare("UPDATE employees SET is_on_duty = FALSE, current_duty_start = NULL WHERE id = ?");
-        $stmt->bind_param("i", $user['id']);
-        $stmt->execute();
-        
-        $stmt_log = $conn->prepare("SELECT duty_start FROM duty_logs WHERE employee_id = ? AND duty_end IS NOT NULL ORDER BY id DESC LIMIT 1");
-        $stmt_log->bind_param("i", $user['id']);
-        $stmt_log->execute();
-        $last_log = $stmt_log->get_result()->fetch_assoc();
-        $stmt_log->close();
+            $log = $stmt->get_result()->fetch_assoc();
+            $stmt->close();
+            
+            if ($log) {
+                // Gunakan TIMESTAMPDIFF(MINUTE, ...) untuk menghitung durasi yang akurat
+                $stmt_update_log = $conn->prepare("
+                    UPDATE duty_logs 
+                    SET duty_end = NOW(), 
+                        duration_minutes = TIMESTAMPDIFF(MINUTE, duty_start, NOW()), 
+                        status = 'completed' 
+                    WHERE id = ?
+                ");
+                if (!$stmt_update_log) {
+                    throw new Exception("Gagal menyiapkan query update log duty: " . $conn->error);
+                }
+                $stmt_update_log->bind_param("i", $log['id']);
+                $stmt_update_log->execute();
+                $stmt_update_log->close();
+            }
+            
+            // Update status employee
+            $stmt_update_employee = $conn->prepare("UPDATE employees SET is_on_duty = FALSE, current_duty_start = NULL WHERE id = ?");
+            if (!$stmt_update_employee) {
+                 throw new Exception("Gagal menyiapkan query update status karyawan: " . $conn->error);
+            }
+            $stmt_update_employee->bind_param("i", $user['id']);
+            $stmt_update_employee->execute();
+            $stmt_update_employee->close();
+            
+            $conn->commit();
 
-        $duration_text = 'N/A';
-        if ($last_log) {
-            $start_dt = new DateTime($last_log['duty_start']);
-            $end_dt = new DateTime(); // Waktu sekarang
-            $interval = $start_dt->diff($end_dt);
-            $duration_text = $interval->h . 'j ' . $interval->i . 'm ' . $interval->s . 'd'; // Menit dan detik untuk akurasi
-        }
+            // Ambil durasi yang baru dihitung untuk notifikasi Discord
+            $stmt_log_duration = $conn->prepare("SELECT duty_start, duration_minutes FROM duty_logs WHERE employee_id = ? AND status = 'completed' ORDER BY id DESC LIMIT 1");
+            $stmt_log_duration->bind_param("i", $user['id']);
+            $stmt_log_duration->execute();
+            $last_log = $stmt_log_duration->get_result()->fetch_assoc();
+            $stmt_log_duration->close();
+            
+            $duration_text = formatDuration($last_log['duration_minutes'] ?? 0);
 
-        sendDiscordNotification(['employee_name' => $user['name'], 'event_type' => 'clock_out', 'duration' => $duration_text], 'clock_event');
-        header('Location: dashboard.php');
-        exit;
+            sendDiscordNotification(['employee_name' => $user['name'], 'event_type' => 'clock_out', 'duration' => $duration_text], 'clock_event');
+            header('Location: dashboard.php');
+            exit;
+
+        } catch (Exception $e) {
+            $conn->rollback();
+            error_log("Off Duty Error: " . $e->getMessage());
+            // Redirect dengan pesan error
+            header('Location: dashboard.php?msg=' . urlencode('Terjadi kesalahan saat Clock Out: ' . $e->getMessage()) . '&type=error');
+            exit;
+        }
     }
 }
 
@@ -101,6 +128,8 @@ $total_sales_overall_dashboard = [
     'paket_spicy_1' => 0,
     'paket_spicy_2' => 0,
     'paket_spicy_3' => 0,
+    'paket_vip_person' => 0,
+    'paket_special_30min' => 0,
 ];
 $stmt_sales_overall = $conn->prepare("
     SELECT
@@ -110,12 +139,13 @@ $stmt_sales_overall = $conn->prepare("
         COALESCE(SUM(paket_soju), 0) as paket_soju,
         COALESCE(SUM(paket_spicy_1), 0) as paket_spicy_1,
         COALESCE(SUM(paket_spicy_2), 0) as paket_spicy_2,
-        COALESCE(SUM(paket_spicy_3), 0) as paket_spicy_3
+        COALESCE(SUM(paket_spicy_3), 0) as paket_spicy_3,
+        COALESCE(SUM(paket_vip_person), 0) as paket_vip_person,
+        COALESCE(SUM(paket_special_30min), 0) as paket_special_30min
     FROM sales_data
     WHERE employee_id = ?
 ");
 
-// Baris 117 yang diperbaiki
 if ($stmt_sales_overall) {
     $stmt_sales_overall->bind_param("i", $user['id']);
     $stmt_sales_overall->execute();
@@ -203,6 +233,9 @@ if ($user['is_on_duty'] && $user['current_duty_start']) {
         <?php include 'includes/sidebar.php'; ?>
 
         <main class="main-content">
+            <?php if (isset($_GET['msg']) && $_GET['type'] == 'error'): ?>
+                <div class="error-message">❌ <?= htmlspecialchars($_GET['msg']) ?></div>
+            <?php endif; ?>
             <?php if ($long_duty_alert_dashboard): ?>
                 <div class="warning-message" style="margin-bottom: var(--spacing-xl);">
                     <strong>⚠️ Perhatian:</strong> Anda sudah On Duty lebih dari 5 jam. Pastikan Anda beristirahat yang cukup!
@@ -270,7 +303,7 @@ if ($user['is_on_duty'] && $user['current_duty_start']) {
                 </a>
                 <a href="leave-request.php" class="btn btn-info">
                     <span class="btn-icon">📝</span>
-                    Izin
+                    Cuti
                 </a>
                 <a href="resignation-request.php" class="btn btn-danger">
                     <span class="btn-icon">📄</span>
