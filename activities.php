@@ -35,7 +35,7 @@ if (!function_exists('getRoleDisplayName')) {
             'magang' => 'Magang',
             // Tambahkan peran lain jika ada
         ];
-        return $roles[$role] ?? ucfirst(str_replace('_', ' ', $role));
+        return $roles[$role] ?? ucfirst(str_replace('\_', ' ', $role));
     }
 }
 
@@ -139,7 +139,7 @@ $stmt = $conn->prepare("
 $stmt->bind_param("i", $user['id']);
 $stmt->execute();
 $activities = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-$stmt->close(); // Tutup statement setelah mengambil hasil
+$stmt->close(); 
 
 // Ambil ringkasan total jam kerja KESELURUHAN pengguna
 $stmt = $conn->prepare("SELECT SUM(duration_minutes) as total_minutes FROM duty_logs WHERE employee_id = ? AND status = 'completed'");

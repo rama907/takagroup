@@ -3,7 +3,6 @@
 // API Endpoint yang dipanggil oleh Discord Bot untuk Clock In/Out.
 
 header('Content-Type: application/json');
-// Sesuaikan path jika file config Anda berada di tempat lain (asumsi di root)
 require_once '../config.php'; 
 
 // --- Utility Function ---
@@ -20,16 +19,13 @@ function send_json_response($status, $message, $data = []) {
 $input = file_get_contents('php://input');
 $request_data = json_decode($input, true);
 
-// Data yang diharapkan dari Bot
 $secret_key = $request_data['api_key'] ?? null;
-$discord_id = $request_data['discord_id'] ?? null; // ID Discord pengguna
-$action = strtolower($request_data['action'] ?? ''); // 'clock_in' atau 'clock_out'
+$discord_id = $request_data['discord_id'] ?? null; 
+$action = strtolower($request_data['action'] ?? '');
 
 // --- 2. Autentikasi API Key ---
-// Periksa apakah API_SECRET_KEY sama dengan yang dikirim Bot
 if ($secret_key !== API_SECRET_KEY) {
-    // FIX PENTING: Periksa apakah API_SECRET_KEY di config.php masih default
-    $security_check = (API_SECRET_KEY === 'oxIRDdPa8wsfx6xYJO1IHxr6RiXFsGKf') ? 
+    $security_check = (API_SECRET_KEY === 'MASUKKAN_KUNCI_RAHASIA_ANDA_DISINI') ? 
         'Error: Default API Key is still set in config.php. Please change it.' : 
         'Invalid API Key.';
         
@@ -69,46 +65,67 @@ try {
         $stmt_update_employee->execute();
         $stmt_update_employee->close();
 
-        // 2. Insert new duty log (manual clock-in via bot)
-        $stmt_insert_log = $conn->prepare("INSERT INTO duty_logs (employee_id, duty_start, is_manual, status) VALUES (?, NOW(), 1, 'active')");
+        // 2. Insert new duty log (is_manual=2 for Discord/Bot)
+        $stmt_insert_log = $conn->prepare("INSERT INTO duty_logs (employee_id, duty_start, is_manual, status) VALUES (?, NOW(), 2, 'active')"); 
+        if (!$stmt_insert_log) {
+            throw new Exception("MySQL Insert Log Error: " . $conn->error);
+        }
         $stmt_insert_log->bind_param("i", $employee_id);
         $stmt_insert_log->execute();
         $stmt_insert_log->close();
         
         $conn->commit();
         
-        // Kirim notifikasi Discord (satu arah)
         sendDiscordNotification(['employee_name' => $employee_name, 'event_type' => 'clock_in'], 'clock_event');
 
         send_json_response('success', "On Duty berhasil! Selamat bertugas, {$employee_name}.", ['state' => 'clocked_in']);
 
     } elseif ($action === 'clock_out') {
-        // --- LOGIC: CLOCK OUT ---
+        // --- LOGIC: CLOCK OUT (CRITICAL FIX) ---
         if (!$is_on_duty) {
             send_json_response('warning', "{$employee_name} sudah terhitung Off Duty. Tidak ada shift aktif.", ['state' => 'already_off']);
         }
 
-        // 1. Cari log duty aktif
-        $stmt_get_log = $conn->prepare("SELECT id, duty_start FROM duty_logs WHERE employee_id = ? AND duty_end IS NULL ORDER BY id DESC LIMIT 1");
+        // 1. Cari log duty aktif (Locking the row for update)
+        $stmt_get_log = $conn->prepare("SELECT id, duty_start FROM duty_logs WHERE employee_id = ? AND duty_end IS NULL ORDER BY id DESC LIMIT 1 FOR UPDATE");
+        if (!$stmt_get_log) {
+            throw new Exception("MySQL Prepare Error (SELECT log): " . $conn->error);
+        }
         $stmt_get_log->bind_param("i", $employee_id);
         $stmt_get_log->execute();
         $active_log = $stmt_get_log->get_result()->fetch_assoc();
         $stmt_get_log->close();
 
         if ($active_log) {
-            $duty_start_dt = new DateTime($active_log['duty_start']);
-            $now_dt = new DateTime();
-            $duration_minutes = ($now_dt->getTimestamp() - $duty_start_dt->getTimestamp()) / 60;
-
-            // 2. Update log duty (status completed)
-            $stmt_update_log = $conn->prepare("UPDATE duty_logs SET duty_end = NOW(), duration_minutes = ?, status = 'completed', approved_by = 0 WHERE id = ?"); // approved_by=0 signifies bot action
-            $stmt_update_log->bind_param("ii", $duration_minutes, $active_log['id']);
+            // 2. Update log duty (set duty_end, calculate duration, set status completed)
+            // FIX KRITIS: Menggunakan NOW() dan TIMESTAMPDIFF(MINUTE, ...)
+            $stmt_update_log = $conn->prepare("
+                UPDATE duty_logs 
+                SET duty_end = NOW(), 
+                    duration_minutes = TIMESTAMPDIFF(MINUTE, duty_start, NOW()), 
+                    status = 'completed' 
+                WHERE id = ?
+            ");
+            if (!$stmt_update_log) {
+                 throw new Exception("MySQL Prepare Error (UPDATE log): " . $conn->error);
+            }
+            $stmt_update_log->bind_param("i", $active_log['id']);
             $stmt_update_log->execute();
             $stmt_update_log->close();
             
-            $duration_text = formatDuration($duration_minutes);
+            // Re-fetch the duration to send correct response
+            // Kita bisa re-fetch atau hitung ulang, re-fetch lebih aman
+            $stmt_re_fetch = $conn->prepare("SELECT duration_minutes FROM duty_logs WHERE id = ?");
+            $stmt_re_fetch->bind_param("i", $active_log['id']);
+            $stmt_re_fetch->execute();
+            $final_duration = $stmt_re_fetch->get_result()->fetch_assoc();
+            $stmt_re_fetch->close();
+            
+            $duration_text = formatDuration($final_duration['duration_minutes'] ?? 0);
+
         } else {
-            $duration_text = 'N/A (Log tidak ditemukan, hanya update status)';
+            // Fallback jika is_on_duty=TRUE tapi log aktif tidak ditemukan
+            $duration_text = '0j 0m (Log Error)';
         }
         
         // 3. Update status employee
@@ -128,7 +145,7 @@ try {
 } catch (Exception $e) {
     $conn->rollback();
     error_log("API Error: " . $e->getMessage());
-    send_json_response('error', "Internal server error during transaction: " . $e->getMessage(), ['code' => 500]);
+    send_json_response('error', "Internal server error during transaction: " . $e->getMessage(), ['code' => 500, 'db_error' => $conn->error]);
 }
 
 ?>

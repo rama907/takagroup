@@ -86,9 +86,8 @@ if (($_SERVER['REQUEST_METHOD'] === 'POST') && (isset($_POST['action']) && $_POS
                     'paket_tuak' => $entry_details['paket_tuak'] ?? 0,
                     'paket_soju' => $entry_details['paket_soju'] ?? 0,
                     'paket_spicy_1' => $entry_details['paket_spicy_1'] ?? 0,
-                    'paket_spicy_2' => $entry_details['paket_spicy_2'] ?? 0,
-                    'paket_spicy_3' => $entry_details['paket_spicy_3'] ?? 0,
-
+                    'paket_azul_1' => $entry_details['paket_spicy_2'] ?? 0, // Menggunakan kolom lama
+                    'paket_azul_2' => $entry_details['paket_spicy_3'] ?? 0, // Menggunakan kolom lama
                 ], 'sale_deleted');
 
             } else {
@@ -116,7 +115,7 @@ if (isset($_GET['msg']) && isset($_GET['type'])) {
     }
 }
 
-// --- START: MODIFIKASI PHP UNTUK PENJUALAN RUANGAN ---
+// --- Handle form submission ---
 if (($_SERVER['REQUEST_METHOD'] === 'POST') && (isset($_POST['action']) && $_POST['action'] === 'update_sales')) {
     $employee_id_from_form = (int)($_POST['employee_id'] ?? $user['id']);
     $date_input = $_POST['date'] ?? '';
@@ -128,12 +127,14 @@ if (($_SERVER['REQUEST_METHOD'] === 'POST') && (isset($_POST['action']) && $_POS
     $paket_soju = (int)($_POST['paket_soju'] ?? 0);
     
     $paket_spicy_1 = $is_director_level ? (int)($_POST['paket_spicy_1'] ?? 0) : 0;
-    $paket_spicy_2 = $is_director_level ? (int)($_POST['paket_spicy_2'] ?? 0) : 0;
-    $paket_spicy_3 = $is_director_level ? (int)($_POST['paket_spicy_3'] ?? 0) : 0;
     
-    // Penjualan Ruangan (NEW VARIABLES)
-    $paket_vip_person = (int)($_POST['paket_vip_person'] ?? 0); // Jumlah orang di Ruangan VIP
-    $paket_special_30min = (int)($_POST['paket_special_30min'] ?? 0); // Jumlah 30 menit sesi Ruangan Spesial
+    // NEW: Azul 1 & Azul 2 (menggunakan kolom lama paket_spicy_2 dan paket_spicy_3)
+    $paket_azul_1 = $is_director_level ? (int)($_POST['paket_azul_1'] ?? 0) : 0; 
+    $paket_azul_2 = $is_director_level ? (int)($_POST['paket_azul_2'] ?? 0) : 0;
+    
+    // Ruangan Dihapus
+    $paket_vip_person = 0;
+    $paket_special_30min = 0;
     
     $error_message = null; 
 
@@ -188,7 +189,6 @@ if (($_SERVER['REQUEST_METHOD'] === 'POST') && (isset($_POST['action']) && $_POS
     $input_time = date('Y-m-d H:i:s'); 
     
     try {
-        // PERHATIAN: Asumsi kolom 'paket_vip_person' dan 'paket_special_30min' sudah ada di tabel sales_data
         $stmt = $conn->prepare("
             INSERT INTO sales_data (
                 employee_id, date, input_time, week_number, year, 
@@ -210,10 +210,10 @@ if (($_SERVER['REQUEST_METHOD'] === 'POST') && (isset($_POST['action']) && $_POS
             $paket_tuak,
             $paket_soju,
             $paket_spicy_1,
-            $paket_spicy_2,
-            $paket_spicy_3,
-            $paket_vip_person,         // NEW
-            $paket_special_30min       // NEW
+            $paket_azul_1, // Bind Azul 1 ke kolom paket_spicy_2
+            $paket_azul_2, // Bind Azul 2 ke kolom paket_spicy_3
+            $paket_vip_person,
+            $paket_special_30min
         );
         
         $result = $stmt->execute();
@@ -233,8 +233,8 @@ if (($_SERVER['REQUEST_METHOD'] === 'POST') && (isset($_POST['action']) && $_POS
                 'paket_tuak' => $paket_tuak,
                 'paket_soju' => $paket_soju,
                 'paket_spicy_1' => $paket_spicy_1,
-                'paket_spicy_2' => $paket_spicy_2,
-                'paket_spicy_3' => $paket_spicy_3,
+                'paket_azul_1' => $paket_azul_1,
+                'paket_azul_2' => $paket_azul_2,
                 'paket_vip_person' => $paket_vip_person,
                 'paket_special_30min' => $paket_special_30min
             ], 'sale_input');
@@ -260,10 +260,8 @@ $overall_sales_summary = [
     'paket_tuak' => 0,
     'paket_soju' => 0,
     'paket_spicy_1' => 0,
-    'paket_spicy_2' => 0,
-    'paket_spicy_3' => 0,
-    'paket_vip_person' => 0,        // NEW
-    'paket_special_30min' => 0,     // NEW
+    'paket_azul_1' => 0,        // NEW
+    'paket_azul_2' => 0,        // NEW
 ];
 $stmt = $conn->prepare("
     SELECT 
@@ -272,10 +270,8 @@ $stmt = $conn->prepare("
         SUM(paket_tuak) as paket_tuak,
         SUM(paket_soju) as paket_soju,
         SUM(paket_spicy_1) as paket_spicy_1,
-        SUM(paket_spicy_2) as paket_spicy_2,
-        SUM(paket_spicy_3) as paket_spicy_3,
-        COALESCE(SUM(paket_vip_person), 0) as paket_vip_person,
-        COALESCE(SUM(paket_special_30min), 0) as paket_special_30min
+        SUM(paket_spicy_2) as paket_azul_1,
+        SUM(paket_spicy_3) as paket_azul_2
     FROM sales_data 
     WHERE employee_id = ?
 ");
@@ -293,7 +289,9 @@ $total_overall_sales = array_sum($overall_sales_summary);
 $today = date('Y-m-d');
 $today_data = []; 
 $stmt = $conn->prepare("
-    SELECT *
+    SELECT 
+        paket_sake, paket_anggur_merah, paket_tuak, paket_soju,
+        paket_spicy_1, paket_spicy_2, paket_spicy_3
     FROM sales_data 
     WHERE employee_id = ? AND date = ? 
     ORDER BY input_time DESC
@@ -310,10 +308,8 @@ $daily_total = [
     'paket_tuak' => 0,
     'paket_soju' => 0,
     'paket_spicy_1' => 0,
-    'paket_spicy_2' => 0,
-    'paket_spicy_3' => 0,
-    'paket_vip_person' => 0,
-    'paket_special_30min' => 0,
+    'paket_azul_1' => 0,
+    'paket_azul_2' => 0,
     'total_entries' => count($today_data)
 ];
 foreach ($today_data as $entry) {
@@ -322,10 +318,8 @@ foreach ($today_data as $entry) {
     $daily_total['paket_tuak'] += $entry['paket_tuak'];
     $daily_total['paket_soju'] += $entry['paket_soju'];
     $daily_total['paket_spicy_1'] += $entry['paket_spicy_1'];
-    $daily_total['paket_spicy_2'] += $entry['paket_spicy_2'];
-    $daily_total['paket_spicy_3'] += $entry['paket_spicy_3'];
-    $daily_total['paket_vip_person'] += $entry['paket_vip_person'];
-    $daily_total['paket_special_30min'] += $entry['paket_special_30min'];
+    $daily_total['paket_azul_1'] += $entry['paket_spicy_2'];
+    $daily_total['paket_azul_2'] += $entry['paket_spicy_3'];
 }
 
 
@@ -341,7 +335,6 @@ $stmt->bind_param("i", $employee_id_to_submit);
 $stmt->execute();
 $recent_sales = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt->close();
-// --- END: MODIFIKASI PHP UNTUK PENJUALAN RUANGAN ---
 
 ?>
 
@@ -397,9 +390,9 @@ $stmt->close();
             background-color: var(--danger-light);
             border-color: var(--danger-color);
         }
-        .product-card-room { /* NEW STYLE FOR ROOMS */
-            background-color: var(--info-light);
-            border-color: var(--info-color);
+        .product-card-azul { /* NEW STYLE FOR AZUL */
+            background-color: #0796ff20; 
+            border-color: #0796ff;
         }
         .today-badge {
             background-color: var(--info-color);
@@ -475,24 +468,15 @@ $stmt->close();
                             <span class="stat-label">SPICY 1</span>
                             <span class="stat-value" style="font-size: 1.2em;"><?= $overall_sales_summary['paket_spicy_1'] ?? 0 ?></span>
                         </div>
-                        <div class="stat-item">
-                            <span class="stat-label">SPICY 2</span>
-                            <span class="stat-value" style="font-size: 1.2em;"><?= $overall_sales_summary['paket_spicy_2'] ?? 0 ?></span>
+                        <div class="stat-item" style="border: 1px solid #0796ff;">
+                            <span class="stat-label">AZUL 1</span>
+                            <span class="stat-value" style="font-size: 1.2em; color: #0796ff;"><?= $overall_sales_summary['paket_azul_1'] ?? 0 ?></span>
                         </div>
-                        <div class="stat-item">
-                            <span class="stat-label">SPICY 3</span>
-                            <span class="stat-value" style="font-size: 1.2em;"><?= $overall_sales_summary['paket_spicy_3'] ?? 0 ?></span>
+                        <div class="stat-item" style="border: 1px solid #0796ff;">
+                            <span class="stat-label">AZUL 2</span>
+                            <span class="stat-value" style="font-size: 1.2em; color: #0796ff;"><?= $overall_sales_summary['paket_azul_2'] ?? 0 ?></span>
                         </div>
                         <?php endif; ?>
-                        
-                        <div class="stat-item" style="border: 1px solid var(--info-color);">
-                            <span class="stat-label">RUANGAN VIP (ORANG)</span>
-                            <span class="stat-value" style="font-size: 1.2em; color: var(--info-color);"><?= $overall_sales_summary['paket_vip_person'] ?? 0 ?></span>
-                        </div>
-                        <div class="stat-item" style="border: 1px solid var(--info-color);">
-                            <span class="stat-label">RUANGAN SPESIAL (30 MIN)</span>
-                            <span class="stat-value" style="font-size: 1.2em; color: var(--info-color);"><?= $overall_sales_summary['paket_special_30min'] ?? 0 ?></span>
-                        </div>
                         </div>
                 </div>
             </div>
@@ -550,6 +534,7 @@ $stmt->close();
                         <div class="sales-input-grid">
                             
                             <div class="section-separator">Penjualan Paketan</div>
+                            
                             <div class="product-card">
                                 <label for="paket_sake">SAKE</label>
                                 <p>$20,000.00</p>
@@ -592,43 +577,24 @@ $stmt->close();
                                     <input type="number" name="paket_spicy_1" id="paket_spicy_1" value="0" min="0">
                                 </div>
                             </div>
-                            <div class="product-card product-card-spicy">
-                                <label for="paket_spicy_2">SPICY 2</label>
-                                <p>$45,000.00</p>
+                            <div class="product-card product-card-azul">
+                                <label for="paket_azul_1">AZUL 1</label>
+                                <p>$25,000.00</p>
                                 <div class="quantity-group">
-                                    <label for="paket_spicy_2">Paket</label>
-                                    <input type="number" name="paket_spicy_2" id="paket_spicy_2" value="0" min="0">
+                                    <label for="paket_azul_1">Paket</label>
+                                    <input type="number" name="paket_azul_1" id="paket_azul_1" value="0" min="0">
                                 </div>
                             </div>
-                            <div class="product-card product-card-spicy">
-                                <label for="paket_spicy_3">SPICY 3</label>
-                                <p>$35,000.00</p>
+                            <div class="product-card product-card-azul">
+                                <label for="paket_azul_2">AZUL 2</label>
+                                <p>$20,000.00</p>
                                 <div class="quantity-group">
-                                    <label for="paket_spicy_3">Paket</label>
-                                    <input type="number" name="paket_spicy_3" id="paket_spicy_3" value="0" min="0">
+                                    <label for="paket_azul_2">Paket</label>
+                                    <input type="number" name="paket_azul_2" id="paket_azul_2" value="0" min="0">
                                 </div>
                             </div>
                             <?php endif; ?>
-
-                            <div class="section-separator" style="border-bottom-color: var(--info-color);">Penjualan Ruangan</div>
-                            
-                            <div class="product-card product-card-room">
-                                <label for="paket_vip_person">RUANGAN VIP</label>
-                                <p>$ 50,000.00 / Orang</p>
-                                <div class="quantity-group">
-                                    <label for="paket_vip_person">Jumlah Orang</label>
-                                    <input type="number" name="paket_vip_person" id="paket_vip_person" value="0" min="0">
-                                </div>
-                            </div>
-                            <div class="product-card product-card-room">
-                                <label for="paket_special_30min">RUANGAN SPESIAL</label>
-                                <p>$ 350,000.00 / 30 Menit</p>
-                                <div class="quantity-group">
-                                    <label for="paket_special_30min">Sesi (30 Menit)</label>
-                                    <input type="number" name="paket_special_30min" id="paket_special_30min" value="0" min="0">
-                                </div>
-                            </div>
-                            </div>
+                        </div>
                         
                         <div class="form-actions">
                             <button type="submit" class="btn btn-primary" id="submit-btn">
@@ -659,10 +625,8 @@ $stmt->close();
                                         <th>Tuak</th>
                                         <th>Soju</th>
                                         <th>Spicy 1</th>
-                                        <th>Spicy 2</th>
-                                        <th>Spicy 3</th>
-                                        <th>Ruangan VIP (Orang)</th>
-                                        <th>Ruangan Spesial (30 Menit)</th>
+                                        <th>Azul 1</th>
+                                        <th>Azul 2</th>
                                         <th>Aksi</th>
                                     </tr>
                                 </thead>
@@ -685,10 +649,8 @@ $stmt->close();
                                         <td data-label="Tuak"><?= $sale['paket_tuak'] ?></td>
                                         <td data-label="Soju"><?= $sale['paket_soju'] ?></td>
                                         <td data-label="Spicy 1"><?= $sale['paket_spicy_1'] ?></td>
-                                        <td data-label="Spicy 2"><?= $sale['paket_spicy_2'] ?></td>
-                                        <td data-label="Spicy 3"><?= $sale['paket_spicy_3'] ?></td>
-                                        <td data-label="Ruangan VIP (Orang)"><?= $sale['paket_vip_person'] ?? 0 ?></td>
-                                        <td data-label="Ruangan Spesial (30 Menit)"><?= $sale['paket_special_30min'] ?? 0 ?></td>
+                                        <td data-label="Azul 1"><?= $sale['paket_spicy_2'] ?? 0 ?></td>
+                                        <td data-label="Azul 2"><?= $sale['paket_spicy_3'] ?? 0 ?></td>
                                         <td data-label="Aksi">
                                             <form method="POST" onsubmit="return confirm('Yakin ingin menghapus entri penjualan ini? Aksi ini TIDAK DAPAT DIBATALKAN.')">
                                                 <input type="hidden" name="action" value="delete_sales_entry">

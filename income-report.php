@@ -9,17 +9,18 @@ if (!isLoggedIn() || !hasRole(['ceo', 'direktur', 'wakil_direktur', 'manager']))
 $user = getCurrentUser();
 $pending_requests_count = getPendingRequestCount();
 
-// Definisi harga per paket
+// Definisi harga per paket (UPDATED)
 $price_sake = 20000;
 $price_anggur_merah = 20000;
 $price_tuak = 20000;
 $price_soju = 20000;
 $price_spicy_1 = 65000;
-$price_spicy_2 = 45000;
-$price_spicy_3 = 35000;
-// NEW PRICES FOR ROOMS
-$price_vip_person = 50000;
-$price_special_30min = 350000;
+$price_azul_1 = 25000; // NEW PRICE
+$price_azul_2 = 20000; // NEW PRICE
+
+// Variabel Ruangan Dihapus (Diatur ke 0)
+$price_vip_person = 0;
+$price_special_30min = 0;
 
 // Inisialisasi total income
 $total_income_sake = 0;
@@ -27,11 +28,8 @@ $total_income_anggur_merah = 0;
 $total_income_tuak = 0;
 $total_income_soju = 0;
 $total_income_spicy_1 = 0;
-$total_income_spicy_2 = 0;
-$total_income_spicy_3 = 0;
-// NEW TOTAL INCOME VARIABLES
-$total_income_vip = 0;
-$total_income_special = 0;
+$total_income_azul_1 = 0;
+$total_income_azul_2 = 0;
 
 $overall_total_income = 0;
 
@@ -41,11 +39,8 @@ $total_anggur_merah_packages = 0;
 $total_tuak_packages = 0;
 $total_soju_packages = 0;
 $total_spicy_1_packages = 0;
-$total_spicy_2_packages = 0;
-$total_spicy_3_packages = 0;
-// NEW TOTAL UNIT VARIABLES
-$total_vip_packages = 0;
-$total_special_packages = 0;
+$total_azul_1_packages = 0;
+$total_azul_2_packages = 0;
 
 
 // Ambil total pemasukan dari sales_data secara menyeluruh
@@ -56,10 +51,8 @@ $stmt = $conn->prepare("
         COALESCE(SUM(paket_tuak), 0) as sum_tuak,
         COALESCE(SUM(paket_soju), 0) as sum_soju,
         COALESCE(SUM(paket_spicy_1), 0) as sum_spicy_1,
-        COALESCE(SUM(paket_spicy_2), 0) as sum_spicy_2,
-        COALESCE(SUM(paket_spicy_3), 0) as sum_spicy_3,
-        COALESCE(SUM(paket_vip_person), 0) as sum_vip,      /* NEW */
-        COALESCE(SUM(paket_special_30min), 0) as sum_special /* NEW */
+        COALESCE(SUM(paket_spicy_2), 0) as sum_azul_1,
+        COALESCE(SUM(paket_spicy_3), 0) as sum_azul_2
     FROM sales_data
 ");
 
@@ -74,25 +67,19 @@ if ($stmt) {
         $total_tuak_packages = $result['sum_tuak'];
         $total_soju_packages = $result['sum_soju'];
         $total_spicy_1_packages = $result['sum_spicy_1'];
-        $total_spicy_2_packages = $result['sum_spicy_2'];
-        $total_spicy_3_packages = $result['sum_spicy_3'];
-        // NEW ASSIGNMENTS
-        $total_vip_packages = $result['sum_vip'];
-        $total_special_packages = $result['sum_special'];
+        $total_azul_1_packages = $result['sum_azul_1'];
+        $total_azul_2_packages = $result['sum_azul_2'];
 
         $total_income_sake = $total_sake_packages * $price_sake;
         $total_income_anggur_merah = $total_anggur_merah_packages * $price_anggur_merah;
         $total_income_tuak = $total_tuak_packages * $price_tuak;
         $total_income_soju = $total_soju_packages * $price_soju;
         $total_income_spicy_1 = $total_spicy_1_packages * $price_spicy_1;
-        $total_income_spicy_2 = $total_spicy_2_packages * $price_spicy_2;
-        $total_income_spicy_3 = $total_spicy_3_packages * $price_spicy_3;
-        // NEW INCOME CALCULATIONS
-        $total_income_vip = $total_vip_packages * $price_vip_person;
-        $total_income_special = $total_special_packages * $price_special_30min;
+        $total_income_azul_1 = $total_azul_1_packages * $price_azul_1; // NEW CALC
+        $total_income_azul_2 = $total_azul_2_packages * $price_azul_2; // NEW CALC
 
         // OVERALL TOTAL INCOME (UPDATED)
-        $overall_total_income = $total_income_sake + $total_income_anggur_merah + $total_income_tuak + $total_income_soju + $total_income_spicy_1 + $total_income_spicy_2 + $total_income_spicy_3 + $total_income_vip + $total_income_special;
+        $overall_total_income = $total_income_sake + $total_income_anggur_merah + $total_income_tuak + $total_income_soju + $total_income_spicy_1 + $total_income_azul_1 + $total_income_azul_2;
     }
 } else {
     die("Gagal menyiapkan query: " . $conn->error);
@@ -102,8 +89,7 @@ if ($stmt) {
 $daily_revenue_data = [];
 $today = new DateTime();
 $start_of_week = clone $today;
-// Perbaikan: Pastikan hari Senin benar, baik hari ini adalah Senin atau bukan
-if ($start_of_week->format('N') != 1) { // 1 = Senin
+if ($start_of_week->format('N') != 1) { 
     $start_of_week->modify('last Monday');
 }
 $end_of_week = clone $start_of_week;
@@ -117,10 +103,8 @@ $stmt_daily = $conn->prepare("
         SUM(paket_tuak) as sum_tuak_daily,
         SUM(paket_soju) as sum_soju_daily,
         SUM(paket_spicy_1) as sum_spicy_1_daily,
-        SUM(paket_spicy_2) as sum_spicy_2_daily,
-        SUM(paket_spicy_3) as sum_spicy_3_daily,
-        COALESCE(SUM(paket_vip_person), 0) as sum_vip_daily,      /* NEW */
-        COALESCE(SUM(paket_special_30min), 0) as sum_special_daily /* NEW */
+        SUM(paket_spicy_2) as sum_azul_1_daily,
+        SUM(paket_spicy_3) as sum_azul_2_daily
     FROM sales_data
     WHERE date BETWEEN ? AND ?
     GROUP BY date
@@ -138,10 +122,8 @@ if ($stmt_daily) {
                                              (float) ($row['sum_tuak_daily'] * $price_tuak) +
                                              (float) ($row['sum_soju_daily'] * $price_soju) +
                                              (float) ($row['sum_spicy_1_daily'] * $price_spicy_1) +
-                                             (float) ($row['sum_spicy_2_daily'] * $price_spicy_2) +
-                                             (float) ($row['sum_spicy_3_daily'] * $price_spicy_3) +
-                                             (float) ($row['sum_vip_daily'] * $price_vip_person) +     /* NEW CALCULATION */
-                                             (float) ($row['sum_special_daily'] * $price_special_30min); /* NEW CALCULATION */
+                                             (float) ($row['sum_azul_1_daily'] * $price_azul_1) + 
+                                             (float) ($row['sum_azul_2_daily'] * $price_azul_2); 
     }
     $stmt_daily->close();
 } else {
@@ -176,10 +158,8 @@ $stmt_logs = $conn->prepare("
         sd.paket_tuak,
         sd.paket_soju,
         sd.paket_spicy_1,
-        sd.paket_spicy_2,
-        sd.paket_spicy_3,
-        sd.paket_vip_person,         /* NEW */
-        sd.paket_special_30min,      /* NEW */
+        sd.paket_spicy_2 as paket_azul_1,
+        sd.paket_spicy_3 as paket_azul_2,
         e.name as employee_name
     FROM sales_data sd
     JOIN employees e ON sd.employee_id = e.id
@@ -196,11 +176,8 @@ if ($stmt_logs) {
                              ($row['paket_tuak'] * $price_tuak) +
                              ($row['paket_soju'] * $price_soju) +
                              ($row['paket_spicy_1'] * $price_spicy_1) +
-                             ($row['paket_spicy_2'] * $price_spicy_2) +
-                             ($row['paket_spicy_3'] * $price_spicy_3) +
-                             // NEW OMSET CALCULATION
-                             (($row['paket_vip_person'] ?? 0) * $price_vip_person) +
-                             (($row['paket_special_30min'] ?? 0) * $price_special_30min);
+                             ($row['paket_azul_1'] * $price_azul_1) +
+                             ($row['paket_azul_2'] * $price_azul_2);
         
         $omset_logs[] = [
             'id' => $row['id'],
@@ -211,10 +188,8 @@ if ($stmt_logs) {
             'paket_tuak' => $row['paket_tuak'],
             'paket_soju' => $row['paket_soju'],
             'paket_spicy_1' => $row['paket_spicy_1'],
-            'paket_spicy_2' => $row['paket_spicy_2'],
-            'paket_spicy_3' => $row['paket_spicy_3'],
-            'paket_vip_person' => $row['paket_vip_person'] ?? 0,      /* NEW */
-            'paket_special_30min' => $row['paket_special_30min'] ?? 0, /* NEW */
+            'paket_azul_1' => $row['paket_azul_1'],
+            'paket_azul_2' => $row['paket_azul_2'],
             'omset_transaksi' => $transaction_omset
         ];
     }
@@ -244,10 +219,8 @@ if (isset($_GET['export']) && $_GET['export'] == 'detailed_income') {
         'Tuak (Jumlah)',
         'Soju (Jumlah)',
         'Spicy 1 (Jumlah)',
-        'Spicy 2 (Jumlah)',
-        'Spicy 3 (Jumlah)',
-        'Ruangan VIP (Org)',        /* NEW HEADER */
-        'Ruangan Spesial (30m)',    /* NEW HEADER */
+        'Azul 1 (Jumlah)',        
+        'Azul 2 (Jumlah)',    
         'Omset Transaksi (Rp)'
     ];
     fputcsv($output, $headers);
@@ -262,10 +235,8 @@ if (isset($_GET['export']) && $_GET['export'] == 'detailed_income') {
             $log['paket_tuak'],
             $log['paket_soju'],
             $log['paket_spicy_1'],
-            $log['paket_spicy_2'],
-            $log['paket_spicy_3'],
-            $log['paket_vip_person'],       /* NEW DATA */
-            $log['paket_special_30min'],    /* NEW DATA */
+            $log['paket_azul_1'],       
+            $log['paket_azul_2'],    
             $log['omset_transaksi']
         ];
         fputcsv($output, $data_row);
@@ -481,7 +452,7 @@ function formatRupiah($amount) {
                     <span class="page-icon">📈</span>
                     Laporan Pemasukan
                 </h1>
-                <p>Ikhtisar total pemasukan dari penjualan paket makan minum dan ruangan.</p>
+                <p>Ikhtisar total pemasukan dari penjualan paket makan minum.</p>
                 <div class="page-actions" style="margin-top: var(--spacing-md);">
                     <a href="income-report.php?export=detailed_income" class="btn btn-info" target="_blank">
                         <span class="btn-icon">⬇️</span>
@@ -526,38 +497,25 @@ function formatRupiah($amount) {
                     <p class="detail-text"><?= $total_spicy_1_packages ?> paket @ <?= formatRupiah($price_spicy_1) ?></p>
                 </div>
 
-                <div class="income-card">
-                    <div class="icon" style="color: #ef4444;">🌶️</div>
-                    <h4>Pemasukan Spicy 2</h4>
-                    <p class="value"><?= formatRupiah($total_income_spicy_2) ?></p>
-                    <p class="detail-text"><?= $total_spicy_2_packages ?> paket @ <?= formatRupiah($price_spicy_2) ?></p>
+                <div class="income-card" style="border-left: 4px solid #0796ff;">
+                    <div class="icon" style="color: #0796ff;">🔵</div>
+                    <h4>Pemasukan Azul 1</h4>
+                    <p class="value"><?= formatRupiah($total_income_azul_1) ?></p>
+                    <p class="detail-text"><?= $total_azul_1_packages ?> paket @ <?= formatRupiah($price_azul_1) ?></p>
                 </div>
 
-                <div class="income-card">
-                    <div class="icon" style="color: #fca5a5;">🌶️</div>
-                    <h4>Pemasukan Spicy 3</h4>
-                    <p class="value"><?= formatRupiah($total_income_spicy_3) ?></p>
-                    <p class="detail-text"><?= $total_spicy_3_packages ?> paket @ <?= formatRupiah($price_spicy_3) ?></p>
+                <div class="income-card" style="border-left: 4px solid #0796ff;">
+                    <div class="icon" style="color: #0796ff;">🔵</div>
+                    <h4>Pemasukan Azul 2</h4>
+                    <p class="value"><?= formatRupiah($total_income_azul_2) ?></p>
+                    <p class="detail-text"><?= $total_azul_2_packages ?> paket @ <?= formatRupiah($price_azul_2) ?></p>
                 </div>
 
-                <div class="income-card" style="border-left: 4px solid var(--info-color);">
-                    <div class="icon" style="color: var(--info-color);">👥</div>
-                    <h4>Pemasukan Ruangan VIP</h4>
-                    <p class="value"><?= formatRupiah($total_income_vip) ?></p>
-                    <p class="detail-text"><?= $total_vip_packages ?> orang @ <?= formatRupiah($price_vip_person) ?></p>
-                </div>
-                
-                <div class="income-card" style="border-left: 4px solid var(--info-color);">
-                    <div class="icon" style="color: var(--info-color);">⏰</div>
-                    <h4>Pemasukan Ruangan Spesial</h4>
-                    <p class="value"><?= formatRupiah($total_income_special) ?></p>
-                    <p class="detail-text"><?= $total_special_packages ?> sesi (30m) @ <?= formatRupiah($price_special_30min) ?></p>
-                </div>
                 <div class="income-card total" style="grid-column: 1 / -1; max-width: 50%; margin: 0 auto;">
                     <div class="icon" style="color: var(--success-color);">💰</div>
                     <h4>Total Pemasukan Keseluruhan</h4>
                     <p class="value"><?= formatRupiah($overall_total_income) ?></p>
-                    <p class="detail-text">Gabungan dari semua penjualan paket dan ruangan</p>
+                    <p class="detail-text">Gabungan dari semua penjualan paket</p>
                 </div>
             </div>
 
@@ -587,9 +545,9 @@ function formatRupiah($amount) {
                                         <th>Tuak</th>
                                         <th>Soju</th>
                                         <th>Spicy 1</th>
-                                        <th>Spicy 2</th>
-                                        <th>Spicy 3</th>
-                                        <th>Ruangan VIP (Org)</th>    <th>Ruangan Spesial (30m)</th> <th>Omset Transaksi</th>
+                                        <th>Azul 1</th>
+                                        <th>Azul 2</th>
+                                        <th>Omset Transaksi</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -602,9 +560,9 @@ function formatRupiah($amount) {
                                         <td data-label="Tuak"><?= $log['paket_tuak'] ?></td>
                                         <td data-label="Soju"><?= $log['paket_soju'] ?></td>
                                         <td data-label="Spicy 1"><?= $log['paket_spicy_1'] ?></td>
-                                        <td data-label="Spicy 2"><?= $log['paket_spicy_2'] ?></td>
-                                        <td data-label="Spicy 3"><?= $log['paket_spicy_3'] ?></td>
-                                        <td data-label="Ruangan VIP (Org)"><?= $log['paket_vip_person'] ?></td>       <td data-label="Ruangan Spesial (30m)"><?= $log['paket_special_30min'] ?></td> <td data-label="Omset Transaksi"><?= formatRupiah($log['omset_transaksi']) ?></td>
+                                        <td data-label="Azul 1"><?= $log['paket_azul_1'] ?></td>
+                                        <td data-label="Azul 2"><?= $log['paket_azul_2'] ?></td>
+                                        <td data-label="Omset Transaksi"><?= formatRupiah($log['omset_transaksi']) ?></td>
                                     </tr>
                                     <?php endforeach; ?>
                                 </tbody>

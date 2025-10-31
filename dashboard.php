@@ -40,7 +40,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'on_duty') {
         $stmt->bind_param("i", $user['id']);
         $stmt->execute();
         
-        // 2. Insert log (is_manual=0, status='active' for automatic clock-in)
+        // 2. Insert log (is_manual=0, status='active' for automatic web clock-in)
         $stmt = $conn->prepare("INSERT INTO duty_logs (employee_id, duty_start, is_manual, status) VALUES (?, NOW(), 0, 'active')");
         $stmt->bind_param("i", $user['id']);
         $stmt->execute();
@@ -62,7 +62,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'off_duty') {
             $stmt->close();
             
             if ($log) {
-                // Gunakan TIMESTAMPDIFF(MINUTE, ...) untuk menghitung durasi yang akurat
+                // FIX 1: Gunakan TIMESTAMPDIFF(MINUTE, ...) untuk menghitung durasi yang akurat dan set status ke 'completed'
                 $stmt_update_log = $conn->prepare("
                     UPDATE duty_logs 
                     SET duty_end = NOW(), 
@@ -343,6 +343,24 @@ if ($user['is_on_duty'] && $user['current_duty_start']) {
                         <div class="no-data">Belum ada aktivitas</div>
                     <?php else: ?>
                         <?php foreach ($recent_activities as $activity): ?>
+                        <?php 
+                        // Tentukan TIPE tampilan
+                        $display_type = 'Otomatis';
+                        $status_class = 'info';
+                        if ($activity['is_manual'] == 1) {
+                            $display_type = 'Manual (Web)';
+                            $status_class = 'warning';
+                        } elseif ($activity['is_manual'] == 2) {
+                            $display_type = 'Discord/Bot';
+                            $status_class = 'primary';
+                        }
+
+                        // Tentukan durasi tampilan
+                        $is_active = $activity['status'] === 'active';
+                        $display_end_time = $activity['duty_end'] ? date('H:i', strtotime($activity['duty_end'])) : '-';
+                        $display_duration = $is_active ? 'Berlangsung' : formatDuration($activity['duration_minutes']);
+                        $display_status = ucfirst($activity['status']);
+                        ?>
                         <div class="activity-item">
                             <div class="activity-date">
                                 <span class="date-icon">📅</span>
@@ -351,13 +369,20 @@ if ($user['is_on_duty'] && $user['current_duty_start']) {
                             <div class="activity-time">
                                 <span class="time-icon">⏰</span>
                                 <?= date('H:i', strtotime($activity['duty_start'])) ?> - 
-                                <?= $activity['duty_end'] ? date('H:i', strtotime($activity['duty_end'])) : 'Sedang Berlangsung' ?>
+                                <?= $display_end_time ?>
                             </div>
-                            <?php if ($activity['duty_end']): ?>
                             <div class="activity-duration">
-                                Total Jam: <?= formatDuration($activity['duration_minutes']) ?>
+                                <strong>Tipe:</strong> 
+                                <span class="status-badge status-<?= $status_class ?>">
+                                    <?= $display_type ?>
+                                </span>
+                                | <strong>Status:</strong>
+                                <span class="status-badge status-<?= $activity['status'] ?>">
+                                    <?= $display_status ?>
+                                </span>
+                                | <strong>Durasi:</strong> 
+                                <?= $display_duration ?>
                             </div>
-                            <?php endif; ?>
                         </div>
                         <?php endforeach; ?>
                     <?php endif; ?>

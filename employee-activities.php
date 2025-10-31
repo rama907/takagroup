@@ -50,10 +50,8 @@ $stmt = $conn->query("
         COALESCE(sales_summary.paket_tuak, 0) as paket_tuak,
         COALESCE(sales_summary.paket_soju, 0) as paket_soju,
         COALESCE(sales_summary.paket_spicy_1, 0) as paket_spicy_1,
-        COALESCE(sales_summary.paket_spicy_2, 0) as paket_spicy_2,
-        COALESCE(sales_summary.paket_spicy_3, 0) as paket_spicy_3,
-        COALESCE(sales_summary.paket_vip_person, 0) as paket_vip_person,         /* NEW: Ruangan VIP per Orang */
-        COALESCE(sales_summary.paket_special_30min, 0) as paket_special_30min     /* NEW: Ruangan Spesial per 30 Menit */
+        COALESCE(sales_summary.paket_spicy_2, 0) as paket_azul_1,  /* ALIAS: Spicy 2 -> Azul 1 */
+        COALESCE(sales_summary.paket_spicy_3, 0) as paket_azul_2   /* ALIAS: Spicy 3 -> Azul 2 */
     FROM employees e
     LEFT JOIN (
         SELECT
@@ -71,10 +69,8 @@ $stmt = $conn->query("
             SUM(paket_tuak) as paket_tuak,
             SUM(paket_soju) as paket_soju,
             SUM(paket_spicy_1) as paket_spicy_1,
-            SUM(paket_spicy_2) as paket_spicy_2,
-            SUM(paket_spicy_3) as paket_spicy_3,
-            SUM(paket_vip_person) as paket_vip_person,      /* NEW */
-            SUM(paket_special_30min) as paket_special_30min /* NEW */
+            SUM(paket_spicy_2) as paket_spicy_2, /* Column name remains paket_spicy_2 */
+            SUM(paket_spicy_3) as paket_spicy_3  /* Column name remains paket_spicy_3 */
         FROM sales_data
         GROUP BY employee_id
     ) as sales_summary ON e.id = sales_summary.employee_id
@@ -107,19 +103,16 @@ $total_anggur_merah = array_sum(array_column($employee_activities, 'paket_anggur
 $total_tuak = array_sum(array_column($employee_activities, 'paket_tuak'));
 $total_soju = array_sum(array_column($employee_activities, 'paket_soju'));
 $total_spicy_1 = array_sum(array_column($employee_activities, 'paket_spicy_1'));
-$total_spicy_2 = array_sum(array_column($employee_activities, 'paket_spicy_2'));
-$total_spicy_3 = array_sum(array_column($employee_activities, 'paket_spicy_3'));
+$total_azul_1 = array_sum(array_column($employee_activities, 'paket_azul_1'));
+$total_azul_2 = array_sum(array_column($employee_activities, 'paket_azul_2'));
 
-$total_penjualan_paketan = $total_sake + $total_anggur_merah + $total_tuak + $total_soju + $total_spicy_1 + $total_spicy_2 + $total_spicy_3;
+$total_penjualan_paketan = $total_sake + $total_anggur_merah + $total_tuak + $total_soju + $total_spicy_1 + $total_azul_1 + $total_azul_2;
 
-// NEW: Hitung total penjualan ruangan
-$total_vip_person = array_sum(array_column($employee_activities, 'paket_vip_person'));
-$total_special_30min = array_sum(array_column($employee_activities, 'paket_special_30min'));
+// Ruangan Dihapus dari perhitungan total
+$total_penjualan_ruangan = 0; 
 
-$total_penjualan_ruangan = $total_vip_person + $total_special_30min;
-
-// Total Keseluruhan (Paketan + Ruangan)
-$total_paket_terjual_keseluruhan = $total_penjualan_paketan + $total_penjualan_ruangan;
+// Total Keseluruhan (Hanya Paketan)
+$total_paket_terjual_keseluruhan = $total_penjualan_paketan;
 
 // === START EXPORT LOGIC ===
 if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
@@ -135,10 +128,8 @@ if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
             COALESCE(sales_summary.paket_tuak, 0) as paket_tuak,
             COALESCE(sales_summary.paket_soju, 0) as paket_soju,
             COALESCE(sales_summary.paket_spicy_1, 0) as paket_spicy_1,
-            COALESCE(sales_summary.paket_spicy_2, 0) as paket_spicy_2,
-            COALESCE(sales_summary.paket_spicy_3, 0) as paket_spicy_3,
-            COALESCE(sales_summary.paket_vip_person, 0) as paket_vip_person,
-            COALESCE(sales_summary.paket_special_30min, 0) as paket_special_30min
+            COALESCE(sales_summary.paket_spicy_2, 0) as paket_azul_1,
+            COALESCE(sales_summary.paket_spicy_3, 0) as paket_azul_2
         FROM employees e
         LEFT JOIN (
             SELECT
@@ -156,10 +147,8 @@ if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
                 SUM(paket_tuak) as paket_tuak,
                 SUM(paket_soju) as paket_soju,
                 SUM(paket_spicy_1) as paket_spicy_1,
-                SUM(paket_spicy_2) as paket_spicy_2,
-                SUM(paket_spicy_3) as paket_spicy_3,
-                SUM(paket_vip_person) as paket_vip_person,
-                SUM(paket_special_30min) as paket_special_30min
+                SUM(paket_spicy_2) as paket_azul_1,
+                SUM(paket_spicy_3) as paket_azul_2
             FROM sales_data
             GROUP BY employee_id
         ) as sales_summary ON e.id = sales_summary.employee_id
@@ -207,10 +196,8 @@ if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
         'Tuak',
         'Soju',
         'Spicy 1', 
-        'Spicy 2', 
-        'Spicy 3',
-        'Ruangan VIP (Org)', /* NEW */
-        'Ruangan Spesial (30m)' /* NEW */
+        'Azul 1',
+        'Azul 2',
     ];
     fputcsv($output, $headers);
 
@@ -226,10 +213,8 @@ if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
             $row['paket_tuak'],
             $row['paket_soju'],
             $row['paket_spicy_1'], 
-            $row['paket_spicy_2'], 
-            $row['paket_spicy_3'],
-            $row['paket_vip_person'],   /* NEW */
-            $row['paket_special_30min'] /* NEW */
+            $row['paket_azul_1'], 
+            $row['paket_azul_2'], 
         ];
         fputcsv($output, $data_row);
     }
@@ -285,7 +270,7 @@ if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
                     <div class="summary-content">
                         <h4>Total Penjualan Keseluruhan</h4>
                         <p class="summary-value">
-                            <?= $total_paket_terjual_keseluruhan ?>
+                            <?= $total_paket_terjual_keseluruhan ?> Paket
                         </p>
                         <p class="stat-breakdown" style="font-size: 0.9em; margin-top: 0.5rem; text-align: left;">
                             <strong>Paketan (Total: <?= $total_penjualan_paketan ?>):</strong>
@@ -294,15 +279,10 @@ if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
                             <span>Tuak: <strong><?= $total_tuak ?></strong></span>
                             <span>Soju: <strong><?= $total_soju ?></strong></span>
                             <span>Spicy 1: <strong><?= $total_spicy_1 ?></strong></span>
-                            <span>Spicy 2: <strong><?= $total_spicy_2 ?></strong></span>
-                            <span>Spicy 3: <strong><?= $total_spicy_3 ?></strong></span>
+                            <span>Azul 1: <strong><?= $total_azul_1 ?></strong></span>
+                            <span>Azul 2: <strong><?= $total_azul_2 ?></strong></span>
                         </p>
-                         <p class="stat-breakdown" style="font-size: 0.9em; margin-top: 0.5rem; text-align: left;">
-                            <strong>Ruangan (Total: <?= $total_penjualan_ruangan ?>):</strong>
-                            <span>Ruangan VIP (Org): <strong><?= $total_vip_person ?></strong></span>
-                            <span>Ruangan Spesial (30m): <strong><?= $total_special_30min ?></strong></span>
-                        </p>
-                        </div>
+                    </div>
                 </div>
                 <div class="summary-card">
                     <div class="summary-icon" style="color: var(--success-color);">✅</div>
@@ -333,14 +313,14 @@ if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
                                     <th>Tuak</th>
                                     <th>Soju</th>
                                     <th>Spicy 1</th>
-                                    <th>Spicy 2</th>
-                                    <th>Spicy 3</th>
-                                    <th>Ruangan VIP (Org)</th> <th>Ruangan Spesial (30m)</th> </tr>
+                                    <th>Azul 1</th>
+                                    <th>Azul 2</th>
+                                </tr>
                             </thead>
                             <tbody>
                                 <?php if (empty($employee_activities)): ?>
                                     <tr>
-                                        <td colspan="13" class="no-data">Belum ada data aktivitas anggota.</td>
+                                        <td colspan="11" class="no-data">Belum ada data aktivitas anggota.</td>
                                     </tr>
                                 <?php else: ?>
                                     <?php foreach ($employee_activities as $activity): ?>
@@ -372,9 +352,9 @@ if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
                                         <td data-label="Tuak"><?= $activity['paket_tuak'] ?></td>
                                         <td data-label="Soju"><?= $activity['paket_soju'] ?></td>
                                         <td data-label="Spicy 1"><?= $activity['paket_spicy_1'] ?></td>
-                                        <td data-label="Spicy 2"><?= $activity['paket_spicy_2'] ?></td>
-                                        <td data-label="Spicy 3"><?= $activity['paket_spicy_3'] ?></td>
-                                        <td data-label="Ruangan VIP (Org)"><?= $activity['paket_vip_person'] ?></td>       <td data-label="Ruangan Spesial (30m)"><?= $activity['paket_special_30min'] ?></td> </tr>
+                                        <td data-label="Azul 1"><?= $activity['paket_azul_1'] ?></td>
+                                        <td data-label="Azul 2"><?= $activity['paket_azul_2'] ?></td>
+                                    </tr>
                                     <?php endforeach; ?>
                                 <?php endif; ?>
                             </tbody>
@@ -386,22 +366,5 @@ if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
     </div>
 
     <script src="script.js"></script>
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            // Animasi untuk kartu ringkasan
-            const summaryCards = document.querySelectorAll('.summary-card');
-            summaryCards.forEach((card, index) => {
-                card.style.animationDelay = `${index * 0.1}s`;
-                card.classList.add('fade-in');
-            });
-
-            // Animasi untuk baris tabel
-            const tableRows = document.querySelectorAll('.activities-table-improved tbody tr');
-            tableRows.forEach((row, index) => {
-                row.style.animationDelay = `${(summaryCards.length * 0.1) + (index * 0.05)}s`; // Sedikit tunda setelah kartu
-                row.classList.add('fade-in');
-            });
-        });
-    </script>
 </body>
 </html>

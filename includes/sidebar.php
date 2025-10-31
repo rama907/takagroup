@@ -135,6 +135,10 @@ if (isset($conn) && isLoggedIn()) {
             <span class="nav-icon">💰</span>
             <span class="nav-text">Data Penjualan</span>
         </a>
+        <a href="sales-input-table-room.php" class="nav-item <?= basename($_SERVER['PHP_SELF']) == 'sales-input-table-room.php' ? 'active' : '' ?>">
+            <span class="nav-icon">💎</span>
+            <span class="nav-text">Input Penjualan Table & Room</span>
+        </a>
         <a href="refrigerator-stock.php" class="nav-item <?= basename($_SERVER['PHP_SELF']) == 'refrigerator-stock.php' ? 'active' : '' ?>">
             <span class="nav-icon">🍷</span>
             <span class="nav-text">Stok Kulkas</span>
