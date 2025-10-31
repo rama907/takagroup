@@ -97,6 +97,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $conn->commit();
             $success = "Data penjualan Table & Room berhasil disimpan! Pendapatan Bersih: " . formatRupiah($total_net_revenue);
             
+            // Opsional: Kirim notifikasi Discord
+            // sendDiscordNotification([...], 'sale_input_table_room'); 
+
         } catch (Exception $e) {
             $conn->rollback();
             $error = "Error saat menyimpan: " . $e->getMessage();
@@ -114,7 +117,7 @@ function formatRupiah($amount) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Input Sales Table & Room - Elysium Night Club</title>
+    <title>Input Sales Table & Room</title>
     <link rel="icon" href="LOGO_WOT.png" type="image/png">
     <link rel="stylesheet" href="style.css">
     <style>
@@ -204,6 +207,19 @@ function formatRupiah($amount) {
         }
         .share-elysium { color: var(--success-color); }
         .share-talent { color: var(--primary-color); }
+        
+        /* Gaya Baru untuk Notifikasi Perubahan Share */
+        .split-active {
+            border: 2px solid var(--primary-color);
+            border-radius: var(--radius-md);
+            padding: 10px;
+            background-color: var(--primary-light);
+        }
+        .split-active .share-elysium { 
+             font-weight: 700;
+        }
+
+
         @media (max-width: 1024px) {
             .calculator-grid {
                 grid-template-columns: 1fr;
@@ -253,16 +269,16 @@ function formatRupiah($amount) {
                             <div class="card-header"><h3>Pilih Paket Dasar</h3></div>
                             <div class="card-content">
                                 <div class="package-options">
-                                    <div class="package-btn" data-package="regular_table" data-price="<?= $PRICES['regular_table'] ?>" data-includes="0">Regular Table</div>
-                                    <div class="package-btn" data-package="vip_table" data-price="<?= $PRICES['vip_table'] ?>" data-includes="0">VIP Table</div>
-                                    <div class="package-btn" data-package="vvip_table" data-price="<?= $PRICES['vvip_table'] ?>" data-includes="0">VVIP Table</div>
-                                    <div class="package-btn" data-package="vvip_room_only" data-price="<?= $PRICES['vvip_room_only'] ?>" data-includes="2">VVIP ROOM Only (+2 Pak Minuman)</div>
-                                    <div class="package-btn" data-package="vvip_room_angel_demon" data-price="<?= $PRICES['vvip_room_angel_demon'] ?>" data-includes="2">VVIP ROOM & Angel (+2 Pak Minuman)</div>
-                                    <div class="package-btn" data-package="svip_room_angel_demon" data-price="<?= $PRICES['svip_room_angel_demon'] ?>" data-includes="4">SVIP ROOM & Angel (+4 Pak Minuman)</div>
+                                    <div class="package-btn" data-package="regular_table" data-price="<?= $PRICES['regular_table'] ?>" data-includes="0" data-has-angel="false">Regular Table</div>
+                                    <div class="package-btn" data-package="vip_table" data-price="<?= $PRICES['vip_table'] ?>" data-includes="0" data-has-angel="false">VIP Table</div>
+                                    <div class="package-btn" data-package="vvip_table" data-price="<?= $PRICES['vvip_table'] ?>" data-includes="0" data-has-angel="false">VVIP Table</div>
+                                    <div class="package-btn" data-package="vvip_room_only" data-price="<?= $PRICES['vvip_room_only'] ?>" data-includes="2" data-has-angel="false">VVIP ROOM Only (+2 Pak Minuman)</div>
+                                    <div class="package-btn" data-package="vvip_room_angel_demon" data-price="<?= $PRICES['vvip_room_angel_demon'] ?>" data-includes="2" data-has-angel="true">VVIP ROOM & Angel (+2 Pak Minuman)</div>
+                                    <div class="package-btn" data-package="svip_room_angel_demon" data-price="<?= $PRICES['svip_room_angel_demon'] ?>" data-includes="4" data-has-angel="true">SVIP ROOM & Angel (+4 Pak Minuman)</div>
                                 </div>
                                 <div class="form-group" style="margin-top: 20px;">
-                                    <label for="talent_name">Nama Talent/Angel/Demon yang Melayani (Kosongkan jika bukan paket Angel/Demon)</label>
-                                    <input type="text" id="talent_name" name="talent_name" class="form-input" placeholder="Wajib isi jika ada Angel/Demon yang terlibat">
+                                    <label for="talent_name">Nama Talent/Angel/Demon yang Melayani (Wajib isi jika ada Talent terlibat)</label>
+                                    <input type="text" id="talent_name" name="talent_name" class="form-input" placeholder="Kosongkan jika tidak ada Talent/Angel/Demon yang terlibat">
                                 </div>
                             </div>
                         </div>
@@ -315,14 +331,16 @@ function formatRupiah($amount) {
                                 </div>
 
                                 <div class="section-title" style="margin-top: 20px;">
-                                    <h3>Pembagian Hasil (<span id="share_percent_display">100</span>%)</h3>
+                                    <h3>Pembagian Hasil</h3>
                                 </div>
                                 
-                                <div class="result-row profit-share share-talent">
-                                    <span>Pemasukan Talent (<span id="talent_share_percent">0</span>%):</span> <strong id="talent_share_display">Rp 0</strong>
-                                </div>
-                                <div class="result-row profit-share share-elysium">
-                                    <span>Pemasukan Elysium (<span id="elysium_share_percent">100</span>%):</span> <strong id="elysium_share_display">Rp 0</strong>
+                                <div id="share-wrapper">
+                                    <div class="result-row profit-share share-talent">
+                                        <span>Pemasukan Talent (<span id="talent_share_percent">0</span>%):</span> <strong id="talent_share_display">Rp 0</strong>
+                                    </div>
+                                    <div class="result-row profit-share share-elysium">
+                                        <span>Pemasukan Elysium (<span id="elysium_share_percent_display">100</span>%):</span> <strong id="elysium_share_display">Rp 0</strong>
+                                    </div>
                                 </div>
                                 
                                 <button type="submit" class="btn btn-primary" id="save-button" style="margin-top: 20px;">
@@ -343,7 +361,7 @@ function formatRupiah($amount) {
 
         const PACKAGE_DETAILS = {
             regular_table: { label: "Regular Table", base: PRICES.regular_table, included_packs: 0, has_angel: false },
-            vip_table: { label: "VIP Table", base: PRICES.vip_table, included_packs: 0, has_angel: false },
+            vip_table: { label: "VIP Table", base: PRICES.vip_table, included_packs: 0, has_angel: false }, 
             vvip_table: { label: "VVIP Table", base: PRICES.vvip_table, included_packs: 0, has_angel: false },
             vvip_room_only: { label: "VVIP ROOM Only", base: PRICES.vvip_room_only, included_packs: 2, has_angel: false },
             vvip_room_angel_demon: { label: "VVIP ROOM & Angel", base: PRICES.vvip_room_angel_demon, included_packs: 2, has_angel: true },
@@ -352,27 +370,32 @@ function formatRupiah($amount) {
 
         const ADDON_TEMPLATES = {
             regular_table: `
-                <div class="add-on-item">
-                    <label>1 Angel / Demon (15 Menit) - @${formatRupiah(PRICES.addon_angel_demon_15m)}</label>
-                    <input type="number" id="addon_angel_demon_15m_input" name="addon_angel_demon_15m" min="0" value="0" data-is-angel="true">
+                <div class="info-message">
+                    Regular Table tidak memiliki add-on Angel/Demon.
                 </div>
             `,
             vip_table: `
                 <div class="add-on-item">
                     <label>1 Angel / Demon (15 Menit) - @${formatRupiah(PRICES.addon_angel_demon_15m)}</label>
-                    <input type="number" id="addon_angel_demon_15m_input" name="addon_angel_demon_15m" min="0" value="0" data-is-angel="true">
+                    <input type="number" id="addon_angel_demon_15m_input" name="addon_angel_demon_15m" min="0" value="0" data-is-angel="true" data-price-per-unit="${PRICES.addon_angel_demon_15m}">
+                </div>
+                <div class="info-message" style="margin-top: 10px;">
+                    **Catatan:** Add-on ini akan mengaktifkan pembagian 60/40.
                 </div>
             `,
             vvip_table: `
                 <div class="add-on-item">
                     <label>1 Angel / Demon (15 Menit) - @${formatRupiah(PRICES.addon_angel_demon_15m)}</label>
-                    <input type="number" id="addon_angel_demon_15m_input" name="addon_angel_demon_15m" min="0" value="0" data-is-angel="true">
+                    <input type="number" id="addon_angel_demon_15m_input" name="addon_angel_demon_15m" min="0" value="0" data-is-angel="true" data-price-per-unit="${PRICES.addon_angel_demon_15m}">
+                </div>
+                 <div class="info-message" style="margin-top: 10px;">
+                    **Catatan:** Add-on ini akan mengaktifkan pembagian 60/40.
                 </div>
             `,
             vvip_room_only: `
                 <div class="add-on-item">
                     <label>Extra Guest: @${formatRupiah(PRICES.addon_vvip_extra_guest)} / Org (Max 3 Guest)</label>
-                    <input type="number" id="addon_vvip_extra_guest_input" name="total_guest" min="0" value="0" data-base-guest="3">
+                    <input type="number" id="addon_vvip_extra_guest_input" name="total_guest_addon_qty" min="0" value="0" data-base-guest="3" data-price-per-unit="${PRICES.addon_vvip_extra_guest}">
                 </div>
                 <div class="add-on-item">
                     <label>Extra Time: @${formatRupiah(PRICES.addon_vvip_extra_time_10m)} / 10 Menit (Max 30m)</label>
@@ -382,7 +405,7 @@ function formatRupiah($amount) {
             vvip_room_angel_demon: `
                  <div class="add-on-item">
                     <label>Extra Guest: @${formatRupiah(PRICES.addon_vvip_angel_extra_guest)} / Org (Max 2 Extra)</label>
-                    <input type="number" id="addon_vvip_angel_extra_guest_input" name="total_guest" min="0" value="0" data-base-guest="1">
+                    <input type="number" id="addon_vvip_angel_extra_guest_input" name="total_guest_addon_qty" min="0" value="0" data-base-guest="1" data-price-per-unit="${PRICES.addon_vvip_angel_extra_guest}">
                 </div>
                 <div class="add-on-item">
                     <label>Extra Time: @${formatRupiah(PRICES.addon_vvip_angel_extra_time_15m)} / 15 Menit (Max 30m)</label>
@@ -390,13 +413,13 @@ function formatRupiah($amount) {
                 </div>
                 <div class="add-on-item">
                     <label>Extra Angel / Demon: @${formatRupiah(PRICES.addon_vvip_angel_extra_angel)} / Org</label>
-                    <input type="number" id="addon_vvip_angel_extra_angel_input" name="addon_extra_angel" min="0" value="0" data-is-angel="true">
+                    <input type="number" id="addon_vvip_angel_extra_angel_input" name="addon_extra_angel" min="0" value="0" data-is-angel="true" data-price-per-unit="${PRICES.addon_vvip_angel_extra_angel}">
                 </div>
             `,
             svip_room_angel_demon: `
                  <div class="add-on-item">
                     <label>Extra Guest: @${formatRupiah(PRICES.addon_svip_angel_extra_guest)} / Org (Max 4 Extra)</label>
-                    <input type="number" id="addon_svip_angel_extra_guest_input" name="total_guest" min="0" value="0" data-base-guest="1">
+                    <input type="number" id="addon_svip_angel_extra_guest_input" name="total_guest_addon_qty" min="0" value="0" data-base-guest="1" data-price-per-unit="${PRICES.addon_svip_angel_extra_guest}">
                 </div>
                 <div class="add-on-item">
                     <label>Extra Time: @${formatRupiah(PRICES.addon_svip_angel_extra_time_15m)} / 15 Menit (Max 30m)</label>
@@ -404,13 +427,12 @@ function formatRupiah($amount) {
                 </div>
                 <div class="add-on-item">
                     <label>Extra Angel / Demon: @${formatRupiah(PRICES.addon_svip_angel_extra_angel)} / Org</label>
-                    <input type="number" id="addon_svip_angel_extra_angel_input" name="addon_extra_angel" min="0" value="0" data-is-angel="true">
+                    <input type="number" id="addon_svip_angel_extra_angel_input" name="addon_extra_angel" min="0" value="0" data-is-angel="true" data-price-per-unit="${PRICES.addon_svip_angel_extra_angel}">
                 </div>
             `,
         };
         
         let selectedPackage = null;
-        let isTalentInvolved = false;
 
         // Utility to format Rupiah client-side
         function formatRupiah(angka) {
@@ -427,53 +449,70 @@ function formatRupiah($amount) {
             let totalAddonsCost = 0;
             let includedPacks = 0;
             let totalExtraTimeMinutes = 0;
-            isTalentInvolved = false;
-            
+            let isTalentInvolved = false; 
+            let finalGrossRevenue = 0;
+
             const currentDiscount = parseInt(document.getElementById('diskon_percentage').value) || 0;
+            const talentNameInput = document.getElementById('talent_name').value.trim();
+            const shareWrapper = document.getElementById('share-wrapper');
             
             if (selectedPackage) {
                 const pkg = PACKAGE_DETAILS[selectedPackage];
                 basePrice = pkg.base;
                 includedPacks = pkg.included_packs;
                 
-                // Cek apakah paket dasar sudah termasuk Angel/Demon (misalnya VVIP/SVIP ROOM & Angel)
+                // 1. Cek apakah paket dasar sudah termasuk Angel/Demon
                 if (pkg.has_angel) {
                     isTalentInvolved = true;
                 }
 
-                // --- 1. Hitung Add-Ons Umum ---
+                // --- 2. Hitung Add-Ons Umum (Drink 3 Pak) ---
                 const drinkAddonQty = parseInt(document.getElementById('addon_drink_3pak_input').value) || 0;
                 totalAddonsCost += drinkAddonQty * PRICES.addon_drink_3pak;
                 
-                // --- 2. Hitung Add-Ons Spesifik Paket ---
+                // --- 3. Hitung Add-Ons Spesifik Paket ---
                 const addonContent = document.getElementById('addon-content');
                 if (addonContent.innerHTML !== '') {
-                    const extraGuestInput = addonContent.querySelector('input[name="total_guest"]');
-                    const extraTimeInput = addonContent.querySelector('input[name="total_extra_time"]');
-                    const extraAngelInput = addonContent.querySelector('input[name="addon_extra_angel"]');
+                    const form = document.getElementById('sales-calculator-form');
                     
-                    // Logic Extra Guest / Open Table Angel (Angel Add-on di Open Table)
-                    if (extraGuestInput) {
-                        const guestQty = parseInt(extraGuestInput.value) || 0;
-                        const guestPriceKey = extraGuestInput.id.replace('_input', ''); 
-                        const guestBase = parseInt(extraGuestInput.dataset.baseGuest) || 0;
-
-                        if (guestPriceKey === 'addon_angel_demon_15m') { // Khusus Table VIP/VVIP
-                            totalAddonsCost += guestQty * PRICES.addon_angel_demon_15m;
-                            if (guestQty > 0) isTalentInvolved = true;
-                            document.getElementById('total_guest_input').value = guestQty; // Total Angel/Demon
-                        } else if (guestQty > 0) { // Room Packages: Extra Guest
-                            totalAddonsCost += guestQty * PRICES[guestPriceKey];
-                            document.getElementById('total_guest_input').value = guestQty + guestBase;
-                        } else {
-                            document.getElementById('total_guest_input').value = guestBase;
-                        }
-                    } else {
-                        // Untuk Regular/VIP/VVIP table yang tidak ada Angel/Demon add-on
-                        document.getElementById('total_guest_input').value = 0; 
+                    // a. Add-on Angel/Demon (VIP/VVIP Table - 400k)
+                    const openTableAngelInput = addonContent.querySelector('input[name="addon_angel_demon_15m"]');
+                    if (openTableAngelInput) {
+                        const angelDemonQty = parseInt(openTableAngelInput.value) || 0;
+                        const pricePerUnit = parseInt(openTableAngelInput.dataset.pricePerUnit);
+                        totalAddonsCost += angelDemonQty * pricePerUnit;
+                        
+                        if (angelDemonQty > 0) isTalentInvolved = true; // AKSI KRITIS: Aktifkan 60/40
+                        document.getElementById('total_guest_input').value = angelDemonQty; // Total Angel/Demon di Open Table
                     }
 
-                    // Logic Extra Time
+                    // b. Extra Angel Status (Room & Angel Add-on)
+                    const extraAngelInput = addonContent.querySelector('input[name="addon_extra_angel"]');
+                    if (extraAngelInput) {
+                        const angelQty = parseInt(extraAngelInput.value) || 0;
+                        const angelPricePerUnit = parseInt(extraAngelInput.dataset.pricePerUnit);
+                        totalAddonsCost += angelQty * angelPricePerUnit;
+                        if (angelQty > 0) isTalentInvolved = true;
+                    }
+
+
+                    // c. Logic Extra Guest / Guest Qty
+                    const extraGuestInput = addonContent.querySelector('input[name="total_guest_addon_qty"]');
+                    if (extraGuestInput) {
+                        const guestQty = parseInt(extraGuestInput.value) || 0;
+                        const guestBase = parseInt(extraGuestInput.dataset.baseGuest) || 0;
+                        const guestPricePerUnit = parseInt(extraGuestInput.dataset.pricePerUnit);
+
+                        if (guestQty > 0) {
+                            totalAddonsCost += guestQty * guestPricePerUnit;
+                        }
+                        // Update total guest di hidden field
+                        document.getElementById('total_guest_input').value = guestQty + guestBase;
+                    }
+
+
+                    // d. Logic Extra Time
+                    const extraTimeInput = addonContent.querySelector('input[name="total_extra_time"]');
                     if (extraTimeInput) {
                         const timeQty = parseInt(extraTimeInput.value) || 0;
                         const pricePerUnit = parseInt(extraTimeInput.dataset.pricePerUnit);
@@ -482,48 +521,41 @@ function formatRupiah($amount) {
                         totalAddonsCost += timeQty * pricePerUnit;
                         totalExtraTimeMinutes = timeQty * unitMinutes;
                     }
-                    
-                    // Logic Extra Angel/Demon (hanya Room & Angel)
-                    if (extraAngelInput) {
-                        const angelQty = parseInt(extraAngelInput.value) || 0;
-                        const angelPriceKey = extraAngelInput.id.replace('_input', ''); 
-                        totalAddonsCost += angelQty * PRICES[angelPriceKey];
-                        if (angelQty > 0) isTalentInvolved = true;
-                    }
                 }
             }
             
-            // --- 3. Perhitungan Total Biaya Layanan ---
+            // --- 4. Perhitungan Total Biaya Layanan ---
             const initialTotal = basePrice + totalAddonsCost;
             
-            // --- 4. Hitung Diskon ---
+            // --- 5. Hitung Diskon ---
             const discountAmount = initialTotal * (currentDiscount / 100);
-            const finalGrossRevenue = initialTotal - discountAmount;
+            finalGrossRevenue = initialTotal - discountAmount;
             
-            // --- 5. Hitung COGS (Biaya Minuman Fasilitas) ---
+            // --- 6. Hitung COGS (Biaya Minuman Fasilitas) ---
             const totalCOGS = includedPacks * PRICES.cost_per_pak_minuman;
             
-            // --- 6. Hitung Pendapatan Bersih ---
+            // --- 7. Hitung Pendapatan Bersih ---
             const totalNetRevenue = finalGrossRevenue - totalCOGS;
 
-            // --- 7. Profit Sharing Bersyarat ---
+            // --- 8. Profit Sharing Bersyarat ---
             let talentShare;
             let elysiumShare;
             let talentPercentDisplay;
             let elysiumPercentDisplay;
 
-            // Jika ada nama talent yang diinput, atau paket dasar termasuk Angel, atau Add-On Angel dibeli
-            const talentNameInput = document.getElementById('talent_name').value.trim();
+            // Logika Pembagian: 60/40 JIKA ada Talent terlibat (Nama diisi ATAU Angel Addon dibeli), 0/100 JIKA tidak.
             if (isTalentInvolved || talentNameInput !== '') {
                 talentShare = totalNetRevenue * 0.60;
                 elysiumShare = totalNetRevenue * 0.40;
                 talentPercentDisplay = 60;
                 elysiumPercentDisplay = 40;
+                shareWrapper.classList.add('split-active');
             } else {
                 talentShare = 0;
                 elysiumShare = totalNetRevenue;
                 talentPercentDisplay = 0;
                 elysiumPercentDisplay = 100;
+                shareWrapper.classList.remove('split-active');
             }
 
 
@@ -539,25 +571,17 @@ function formatRupiah($amount) {
             
             document.getElementById('talent_share_display').textContent = formatRupiah(talentShare);
             document.getElementById('elysium_share_display').textContent = formatRupiah(elysiumShare);
-            document.getElementById('share_percent_display').textContent = elysiumPercentDisplay; 
+            
             document.getElementById('talent_share_percent').textContent = talentPercentDisplay;
-            document.getElementById('elysium_share_percent').textContent = elysiumPercentDisplay;
-
-
-            // --- UPDATE HIDDEN INPUTS UNTUK SUBMISSION ---
-            document.getElementById('final_gross_revenue_input').value = Math.round(finalGrossRevenue);
-            document.getElementById('final_net_revenue_input').value = Math.round(totalNetRevenue);
-            document.getElementById('final_talent_share_input').value = Math.round(talentShare);
-            document.getElementById('final_elysium_share_input').value = Math.round(elysiumShare);
-            document.getElementById('total_extra_time_minutes_input').value = totalExtraTimeMinutes;
+            document.getElementById('elysium_share_percent_display').textContent = elysiumPercentDisplay;
         }
 
         function initEventListeners() {
             const packageBtns = document.querySelectorAll('.package-btn');
             const addonContentDiv = document.getElementById('addon-content');
             const specificAddonsDiv = document.getElementById('package-specific-addons');
-            const talentNameInput = document.getElementById('talent_name');
-            
+            const form = document.getElementById('sales-calculator-form');
+
             // Listener untuk Pilihan Paket Dasar
             packageBtns.forEach(btn => {
                 btn.addEventListener('click', () => {
@@ -565,14 +589,16 @@ function formatRupiah($amount) {
                     btn.classList.add('selected');
                     selectedPackage = btn.dataset.package;
                     
-                    // Reset add-ons & diskon
-                    addonContentDiv.innerHTML = '';
-                    document.getElementById('addon_drink_3pak_input').value = 0;
-                    document.getElementById('diskon_percentage').value = 0;
+                    // Reset input values (kecuali talent name)
+                    form.querySelectorAll('input[type="number"]').forEach(input => {
+                        input.value = 0;
+                    });
+                    
                     document.getElementById('base_package_input').value = selectedPackage; // Set package name
                     
                     // Muat Add-ons Spesifik
-                    if (ADDON_TEMPLATES[selectedPackage]) {
+                    addonContentDiv.innerHTML = ''; 
+                    if (ADDON_TEMPLATES[selectedPackage] && PACKAGE_DETAILS[selectedPackage]) {
                         addonContentDiv.innerHTML = ADDON_TEMPLATES[selectedPackage];
                         specificAddonsDiv.style.display = 'block';
                     } else {
@@ -587,8 +613,6 @@ function formatRupiah($amount) {
 
             // Listener untuk semua input angka dan nama talent (untuk profit sharing)
             function initInputListeners() {
-                const form = document.getElementById('sales-calculator-form');
-                const numberInputs = form.querySelectorAll('input[type="number"]');
                 const allInputs = form.querySelectorAll('input, select');
 
                 // Hapus semua listener input lama
