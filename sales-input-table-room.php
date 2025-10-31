@@ -41,6 +41,14 @@ $error = null;
 // Ambil daftar semua karyawan untuk dropdown
 $all_employees = $conn->query("SELECT id, name, role FROM employees WHERE status = 'active' ORDER BY name")->fetch_all(MYSQLI_ASSOC);
 
+// --- TANGGAL FILTER (BARU) ---
+$today = date('Y-m-d');
+$selected_date = $_GET['filter_date'] ?? $today; // Menggunakan hari ini sebagai default
+// Pastikan format tanggal valid sebelum digunakan dalam query
+if (!DateTime::createFromFormat('Y-m-d', $selected_date)) {
+    $selected_date = $today;
+}
+
 
 // --- Handle Form Submission (PHP) ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -51,33 +59,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $base_package = $data['base_package'] ?? '';
     $total_guest = (int)($data['total_guest'] ?? 0);
     $total_drink_addon = (int)($data['total_drink_addon'] ?? 0);
-    $total_extra_time = (int)($data['total_extra_time_minutes'] ?? 0); // Disimpan dalam Menit
+    $total_extra_time = (int)($data['total_extra_time_minutes'] ?? 0); 
     $diskon_percentage = (int)($data['diskon_percentage'] ?? 0);
     
-    // Hasil Kalkulasi Final
+    // Hasil Kalkulasi Final (Diasumsikan ini adalah nilai integer dari JS)
     $total_gross_revenue = (int)($data['final_gross_revenue'] ?? 0);
     $total_net_revenue = (int)($data['final_net_revenue'] ?? 0);
     $talent_share = (int)($data['final_talent_share'] ?? 0);
     $elysium_share = (int)($data['final_elysium_share'] ?? 0);
-    $talent_name = $data['talent_name'] ?? '';
-
-
+    $talent_name = $data['talent_name'] ?? ''; // <--- FIELD UNTUK DISIMPAN
+    
+    // Validasi dasar
     if (empty($base_package) || $total_gross_revenue < 0) {
         $error = "Data penjualan tidak valid. Harap isi paket dasar dan hitung ulang.";
     } else {
         $conn->begin_transaction();
         try {
-            // Asumsi tabel sales_table_room sudah dibuat sesuai panduan
+            // INSERT query dengan 11 parameter (Termasuk talent_name)
             $stmt = $conn->prepare("
                 INSERT INTO sales_table_room 
-                (employee_id, sale_date, input_time, base_package, total_guest, total_drink_addon, total_extra_time, diskon_percentage, total_gross_revenue, total_net_revenue, talent_share, elysium_share)
-                VALUES (?, NOW(), NOW(), ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (employee_id, sale_date, input_time, base_package, total_guest, total_drink_addon, total_extra_time, diskon_percentage, total_gross_revenue, total_net_revenue, talent_share, elysium_share, talent_name)
+                VALUES (?, NOW(), NOW(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
             if (!$stmt) {
                 throw new Exception("Gagal menyiapkan query simpan data: " . $conn->error);
             }
-
-            $stmt->bind_param("isiiiiidddd", 
+            
+            // Binding 11 parameter: i s i i i i d d d d s 
+            if (!$stmt->bind_param("isiiiidddds", 
                 $employee_id, 
                 $base_package, 
                 $total_guest, 
@@ -87,8 +96,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $total_gross_revenue, 
                 $total_net_revenue,
                 $talent_share,
-                $elysium_share
-            );
+                $elysium_share,
+                $talent_name // <-- VARIABEL BARU
+            )) {
+                 throw new Exception("Gagal mengikat parameter: Cek jumlah placeholder dan tipe data. Error: " . $stmt->error);
+            }
             
             if (!$stmt->execute()) {
                 throw new Exception("Gagal menyimpan data penjualan: " . $stmt->error);
@@ -97,18 +109,90 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $conn->commit();
             $success = "Data penjualan Table & Room berhasil disimpan! Pendapatan Bersih: " . formatRupiah($total_net_revenue);
             
-            // Opsional: Kirim notifikasi Discord
-            // sendDiscordNotification([...], 'sale_input_table_room'); 
-
         } catch (Exception $e) {
             $conn->rollback();
             $error = "Error saat menyimpan: " . $e->getMessage();
         }
     }
+    
+    // Redirect dengan filter tanggal hari ini agar tetap relevan setelah submit
+    $redirect_msg = $success ?? $error;
+    $redirect_type = isset($success) ? 'success' : 'error';
+    
+    header("Location: sales-input-table-room.php?msg=" . urlencode($redirect_msg) . "&type=" . urlencode($redirect_type) . "&filter_date=" . $today);
+    exit;
+}
+
+// Menampilkan pesan feedback setelah redirect
+if (isset($_GET['msg']) && isset($_GET['type'])) {
+    $feedback_message = htmlspecialchars($_GET['msg']);
+    $feedback_type = htmlspecialchars($_GET['type']);
+    if ($feedback_type === 'success') {
+        $success = $feedback_message;
+    } else {
+        $error = $feedback_message;
+    }
 }
 
 function formatRupiah($amount) {
     return 'Rp ' . number_format($amount, 0, ',', '.') . '';
+}
+
+// --- LOGIKA PENGAMBILAN DATA HARIAN (Menggunakan $selected_date) ---
+$today_sales_summary = [
+    'daily_net_revenue' => 0,
+    'daily_talent_share' => 0,
+    'daily_elysium_share' => 0
+];
+$recent_sales_history = [];
+
+// 1. Query untuk Ringkasan Harian (Filter oleh $selected_date)
+$stmt_daily_summary = $conn->prepare("
+    SELECT
+        COALESCE(SUM(total_net_revenue), 0) as daily_net_revenue,
+        COALESCE(SUM(talent_share), 0) as daily_talent_share,
+        COALESCE(SUM(elysium_share), 0) as daily_elysium_share
+    FROM sales_table_room
+    WHERE DATE(sale_date) = ?
+");
+if ($stmt_daily_summary) {
+    $stmt_daily_summary->bind_param("s", $selected_date);
+    $stmt_daily_summary->execute();
+    $today_sales_summary_result = $stmt_daily_summary->get_result()->fetch_assoc();
+    if ($today_sales_summary_result) {
+        $today_sales_summary = $today_sales_summary_result;
+    }
+    $stmt_daily_summary->close();
+}
+
+// 2. Query untuk Riwayat Transaksi Terbaru (Semua transaksi pada $selected_date)
+$stmt_recent_sales = $conn->prepare("
+    SELECT str.id, str.input_time, str.base_package, str.total_net_revenue, str.talent_share, str.elysium_share, 
+           str.talent_name, e.name as employee_input_name
+    FROM sales_table_room str
+    JOIN employees e ON str.employee_id = e.id
+    WHERE DATE(str.sale_date) = ? 
+    ORDER BY str.input_time DESC
+    LIMIT 20
+");
+if ($stmt_recent_sales) {
+    $stmt_recent_sales->bind_param("s", $selected_date);
+    $stmt_recent_sales->execute();
+    $recent_sales_history = $stmt_recent_sales->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt_recent_sales->close();
+}
+
+// Helper untuk mengubah key paket menjadi nama yang rapi
+function getPackageDisplayName($key) {
+    $map = [
+        'regular_table' => 'Regular Table',
+        'vip_table' => 'VIP Table',
+        'vvip_table' => 'VVIP Table',
+        'vvip_room_only' => 'VVIP Room Only',
+        'vvip_room_angel_demon' => 'VVIP Room + Angel',
+        'svip_room_angel_demon' => 'SVIP Room + Angel',
+    ];
+    return $map[$key] ?? ucwords(str_replace('_', ' ', $key));
 }
 ?>
 
@@ -218,6 +302,85 @@ function formatRupiah($amount) {
         .split-active .share-elysium { 
              font-weight: 700;
         }
+        
+        /* Gaya untuk Ringkasan Harian */
+        .daily-summary-grid {
+            display: flex;
+            justify-content: space-around;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .daily-summary-box {
+            text-align: center;
+            padding: 15px;
+            border-radius: var(--radius-lg);
+            flex: 1;
+            min-width: 150px;
+        }
+        .daily-summary-box h4 {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin-bottom: 5px;
+            text-transform: uppercase;
+        }
+        .daily-summary-box .value {
+            font-size: 1.25rem;
+            font-weight: 700;
+        }
+        .daily-summary-box.total {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-light);
+        }
+        .daily-summary-box.talent {
+            border: 1px solid var(--primary-color);
+            background: var(--primary-light);
+            color: var(--primary-color);
+        }
+        .daily-summary-box.elysium {
+            border: 1px solid var(--success-color);
+            background: var(--success-light);
+            color: var(--success-color);
+        }
+        
+        /* Gaya untuk Riwayat Transaksi */
+        .recent-sales-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        .recent-sales-item {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-light);
+            padding: var(--spacing-md);
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            font-size: 0.9rem;
+        }
+        .recent-sales-item:last-child {
+            border-bottom: none;
+        }
+        .recent-sales-item .name-info {
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        .recent-sales-item .time-info {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+        .recent-sales-item .net-revenue {
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--primary-color);
+        }
+        
+        .filter-control-container {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            align-items: flex-end;
+        }
 
 
         @media (max-width: 1024px) {
@@ -226,6 +389,11 @@ function formatRupiah($amount) {
             }
             .results-section {
                 position: static;
+            }
+        }
+        @media (max-width: 768px) {
+            .daily-summary-grid {
+                flex-direction: column;
             }
         }
     </style>
@@ -352,7 +520,74 @@ function formatRupiah($amount) {
                     </div>
                 </div>
             </form>
-        </main>
+
+            <div class="card full-width" style="margin-top: 20px;">
+                <div class="card-header">
+                    <h3>Riwayat & Ringkasan Penjualan</h3>
+                </div>
+                <div class="card-content">
+                     <div class="filter-control-container">
+                        <form method="GET" style="display: flex; gap: 1rem; align-items: flex-end;">
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label for="filter_date">Pilih Tanggal Riwayat</label>
+                                <input type="date" name="filter_date" id="filter_date" class="form-input" 
+                                       value="<?= htmlspecialchars($selected_date) ?>" required>
+                            </div>
+                            <button type="submit" class="btn btn-primary btn-sm">Lihat Riwayat</button>
+                        </form>
+                    </div>
+
+                    <h4 style="margin-top: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
+                            Ringkasan Tanggal <?= date('d/m/Y', strtotime($selected_date)) ?>
+                    </h4>
+                    <div class="daily-summary-grid">
+                        <div class="daily-summary-box total">
+                            <h4>PENDAPATAN BERSIH</h4>
+                            <p class="value" style="color: var(--text-primary);"><?= formatRupiah($today_sales_summary['daily_net_revenue']) ?></p>
+                        </div>
+                        <div class="daily-summary-box talent">
+                            <h4>TOTAL SHARE TALENT</h4>
+                            <p class="value"><?= formatRupiah($today_sales_summary['daily_talent_share']) ?></p>
+                        </div>
+                        <div class="daily-summary-box elysium">
+                            <h4>TOTAL SHARE ELYSIUM</h4>
+                            <p class="value"><?= formatRupiah($today_sales_summary['daily_elysium_share']) ?></p>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 2rem;">
+                        <h4 style="border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
+                            Riwayat Transaksi (<?= count($recent_sales_history) ?> Entri)
+                        </h4>
+                    </div>
+
+                    <?php if (empty($recent_sales_history)): ?>
+                        <div class="no-data">Tidak ada riwayat input Table & Room pada tanggal ini.</div>
+                    <?php else: ?>
+                        <ul class="recent-sales-list">
+                            <?php foreach ($recent_sales_history as $sale): ?>
+                                <li class="recent-sales-item">
+                                    <span class="time-info">
+                                        <?= date('d/m/Y H:i:s', strtotime($sale['input_time'])) ?> (ID: <?= $sale['id'] ?>)
+                                    </span>
+                                    <span class="name-info">Input Oleh: <?= htmlspecialchars($sale['employee_input_name']) ?></span>
+                                    <?php if (!empty($sale['talent_name'])): ?>
+                                        <span class="name-info">Talent: <?= htmlspecialchars($sale['talent_name']) ?></span>
+                                    <?php endif; ?>
+                                    
+                                    <strong>Paket: <?= getPackageDisplayName($sale['base_package']) ?></strong>
+                                    <span class="net-revenue">Net Revenue: <?= formatRupiah($sale['total_net_revenue']) ?></span>
+                                    <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-secondary);">
+                                        <span>Talent Share: <?= formatRupiah($sale['talent_share']) ?></span>
+                                        <span>Elysium Share: <?= formatRupiah($sale['elysium_share']) ?></span>
+                                    </div>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    <?php endif; ?>
+                </div>
+            </div>
+            </main>
     </div>
 
     <script src="script.js"></script>
@@ -467,7 +702,8 @@ function formatRupiah($amount) {
                 }
 
                 // --- 2. Hitung Add-Ons Umum (Drink 3 Pak) ---
-                const drinkAddonQty = parseInt(document.getElementById('addon_drink_3pak_input').value) || 0;
+                const drinkAddonInput = document.getElementById('addon_drink_3pak_input');
+                const drinkAddonQty = parseInt(drinkAddonInput ? drinkAddonInput.value : 0) || 0;
                 totalAddonsCost += drinkAddonQty * PRICES.addon_drink_3pak;
                 
                 // --- 3. Hitung Add-Ons Spesifik Paket ---
@@ -520,6 +756,8 @@ function formatRupiah($amount) {
 
                         totalAddonsCost += timeQty * pricePerUnit;
                         totalExtraTimeMinutes = timeQty * unitMinutes;
+                        
+                        document.getElementById('total_extra_time_minutes_input').value = totalExtraTimeMinutes;
                     }
                 }
             }
@@ -574,6 +812,12 @@ function formatRupiah($amount) {
             
             document.getElementById('talent_share_percent').textContent = talentPercentDisplay;
             document.getElementById('elysium_share_percent_display').textContent = elysiumPercentDisplay;
+
+            // --- UPDATE HIDDEN INPUTS UNTUK SUBMIT ---
+            document.getElementById('final_gross_revenue_input').value = Math.round(finalGrossRevenue);
+            document.getElementById('final_net_revenue_input').value = Math.round(totalNetRevenue);
+            document.getElementById('final_talent_share_input').value = Math.round(talentShare);
+            document.getElementById('final_elysium_share_input').value = Math.round(elysiumShare);
         }
 
         function initEventListeners() {
@@ -615,21 +859,26 @@ function formatRupiah($amount) {
             function initInputListeners() {
                 const allInputs = form.querySelectorAll('input, select');
 
-                // Hapus semua listener input lama
+                // Hapus semua listener input lama (untuk menghindari duplikasi)
                 allInputs.forEach(input => {
                     input.removeEventListener('input', calculateTotal);
+                    input.removeEventListener('change', calculateTotal); 
                 });
 
                 // Tambahkan listener input baru ke semua input (angka dan teks)
                 allInputs.forEach(input => {
-                    input.addEventListener('input', calculateTotal);
+                    if (input.type === 'number' || input.type === 'text') {
+                        input.addEventListener('input', calculateTotal);
+                    } else if (input.tagName === 'SELECT' || input.type === 'radio' || input.type === 'checkbox') {
+                         input.addEventListener('change', calculateTotal);
+                    }
                 });
                 
-                // Tambahkan listener untuk change pada select/input file jika ada
-                form.querySelector('#talent_name').addEventListener('input', calculateTotal); 
+                // Listener khusus untuk nama talent
+                form.querySelector('#talent_name').addEventListener('input', calculateTotal);
             }
             
-            // Inisialisasi awal (jika ada paket, klik yang pertama)
+            // Inisialisasi awal (klik paket pertama untuk memuat add-on)
             if(packageBtns.length > 0) {
                  packageBtns[0].click();
             } else {
@@ -638,12 +887,22 @@ function formatRupiah($amount) {
 
             // Form submission final check
             document.getElementById('sales-calculator-form').addEventListener('submit', function(e) {
-                const netRevenue = parseInt(document.getElementById('final_net_revenue_input').value);
+                // Panggil calculateTotal lagi untuk memastikan hidden input terisi dengan nilai terbaru
+                calculateTotal(); 
+
+                const netRevenueInput = document.getElementById('final_net_revenue_input');
+                const netRevenue = parseInt(netRevenueInput.value) || 0;
                 const packageSelected = document.getElementById('base_package_input').value;
                 const talentName = document.getElementById('talent_name').value.trim();
-                const isAngelAddon = document.getElementById('addon-content').querySelector('input[data-is-angel="true"]')?.value > 0;
+                
+                // Logika cek keterlibatan Angel/Demon: Cek paket dasar ATAU cek input addon_angel_demon_15m / addon_extra_angel
+                const isAngelAddonPresent = (document.getElementById('addon-content').querySelector('input[name="addon_angel_demon_15m"]')?.value > 0) || 
+                                            (document.getElementById('addon-content').querySelector('input[name="addon_extra_angel"]')?.value > 0);
                 const isTalentPackage = PACKAGE_DETAILS[packageSelected]?.has_angel;
+                const isTalentInvolved = isTalentPackage || isAngelAddonPresent || (talentName !== '');
+
                 const errorMessage = document.getElementById('error-message');
+                errorMessage.style.display = 'none';
 
                 // Validasi 1: Paket harus dipilih
                 if (!packageSelected) {
@@ -654,9 +913,9 @@ function formatRupiah($amount) {
                 }
 
                 // Validasi 2: Jika ada Angel/Demon terlibat, nama talent WAJIB diisi.
-                if ((isTalentPackage || isAngelAddon) && talentName === '') {
+                if (isTalentInvolved && talentName === '') {
                     e.preventDefault();
-                    errorMessage.textContent = '❌ Nama Talent wajib diisi untuk paket Angel/Demon.';
+                    errorMessage.textContent = '❌ Nama Talent wajib diisi untuk paket Angel/Demon atau jika Add-on Angel dibeli.';
                     errorMessage.style.display = 'block';
                     return;
                 }
@@ -673,7 +932,6 @@ function formatRupiah($amount) {
                     e.preventDefault();
                     return;
                 }
-                errorMessage.style.display = 'none';
             });
         }
         
