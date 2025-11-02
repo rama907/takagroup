@@ -49,6 +49,114 @@ if (!DateTime::createFromFormat('Y-m-d', $selected_date)) {
     $selected_date = $today;
 }
 
+function formatRupiah($amount) {
+    return 'Rp ' . number_format($amount, 0, ',', '.') . '';
+}
+
+// Helper untuk mengubah key paket menjadi nama yang rapi
+function getPackageDisplayName($key) {
+    $map = [
+        'regular_table' => 'Regular Table',
+        'vip_table' => 'VIP Table',
+        'vvip_table' => 'VVIP Table',
+        'vvip_room_only' => 'VVIP Room Only',
+        'vvip_room_angel_demon' => 'VVIP Room + Angel',
+        'svip_room_angel_demon' => 'SVIP Room + Angel',
+    ];
+    return $map[$key] ?? ucwords(str_replace('_', ' ', $key));
+}
+
+// --- Handle Delete Single Sales Entry ---
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'delete_single_sale') {
+    $sale_id = (int)($_POST['sale_id'] ?? 0);
+    $employee_id_of_log = (int)($user['id'] ?? 0); // User who performs deletion
+
+    if ($sale_id <= 0) {
+        $error = "ID transaksi tidak valid!";
+    } else {
+        $conn->begin_transaction();
+        try {
+            // 1. Ambil detail entri sebelum dihapus untuk notifikasi
+            $stmt_get_entry = $conn->prepare("
+                SELECT str.*, e.name as employee_input_name
+                FROM sales_table_room str
+                JOIN employees e ON str.employee_id = e.id
+                WHERE str.id = ?
+            ");
+            if (!$stmt_get_entry) { throw new Exception("Gagal menyiapkan query ambil detail entri: " . $conn->error); }
+            $stmt_get_entry->bind_param("i", $sale_id);
+            $stmt_get_entry->execute();
+            $entry_details = $stmt_get_entry->get_result()->fetch_assoc();
+            $stmt_get_entry->close();
+
+            if (!$entry_details) { throw new Exception("Entri penjualan tidak ditemukan."); }
+
+            // 2. Hapus entri penjualan
+            $stmt_delete = $conn->prepare("DELETE FROM sales_table_room WHERE id = ?");
+            if (!$stmt_delete) { throw new Exception("Gagal menyiapkan query hapus entri penjualan: " . $conn->error); }
+            $stmt_delete->bind_param("i", $sale_id);
+            
+            if ($stmt_delete->execute() && $stmt_delete->affected_rows > 0) {
+                $conn->commit();
+                $success = "Entri penjualan Table & Room ID: " . $sale_id . " berhasil dihapus.";
+                
+                // Kirim notifikasi Discord
+                sendDiscordNotification([
+                    'employee_name' => $entry_details['employee_input_name'],
+                    'sales_date_time' => date('d/m/Y H:i', strtotime($entry_details['input_time'])),
+                    'room_name' => getPackageDisplayName($entry_details['base_package'])
+                ], 'sale_deleted'); // Reuse existing type, it's fine for admin deletion
+            } else {
+                throw new Exception("Gagal menghapus entri penjualan. Mungkin sudah dihapus atau tidak ada perubahan.");
+            }
+            $stmt_delete->close();
+        } catch (Exception $e) {
+            $conn->rollback();
+            $error = "Terjadi kesalahan saat menghapus: " . $e->getMessage();
+        }
+    }
+    // Redirect with message
+    $redirect_msg = $success ?? $error;
+    $redirect_type = isset($success) ? 'success' : 'error';
+    header("Location: sales-input-table-room.php?msg=" . urlencode($redirect_msg) . "&type=" . urlencode($redirect_type) . "&filter_date=" . urlencode($selected_date));
+    exit;
+}
+
+// --- Handle Delete All Sales Entries ---
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'delete_all_sales') {
+    $conn->begin_transaction();
+    try {
+        // Hapus semua data dari sales_table_room
+        $stmt_delete = $conn->prepare("DELETE FROM sales_table_room");
+        if (!$stmt_delete) {
+            throw new Exception("Gagal menyiapkan query hapus semua entri penjualan: " . $conn->error);
+        }
+        
+        if ($stmt_delete->execute()) {
+            $deleted_count = $stmt_delete->affected_rows;
+            $conn->commit();
+            $success = "Berhasil menghapus **semua** ({$deleted_count}) riwayat transaksi Table & Room.";
+            
+            // Kirim notifikasi Discord
+            sendDiscordNotification([
+                'admin_name' => $user['name'],
+                'deleted_count' => $deleted_count,
+                'action_type' => 'delete_all_table_room_sales' // custom type
+            ], 'admin_system_action'); // Use a general admin action notification
+        } else {
+            throw new Exception("Gagal menghapus semua entri penjualan. Mungkin tabel kosong.");
+        }
+        $stmt_delete->close();
+    } catch (Exception $e) {
+        $conn->rollback();
+        $error = "Terjadi kesalahan saat menghapus semua data: " . $e->getMessage();
+    }
+    // Redirect with message
+    $redirect_msg = $success ?? $error;
+    $redirect_type = isset($success) ? 'success' : 'error';
+    header("Location: sales-input-table-room.php?msg=" . urlencode($redirect_msg) . "&type=" . urlencode($redirect_type) . "&filter_date=" . urlencode($selected_date));
+    exit;
+}
 
 // --- Handle Form Submission (PHP) ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -134,9 +242,6 @@ if (isset($_GET['msg']) && isset($_GET['type'])) {
     }
 }
 
-function formatRupiah($amount) {
-    return 'Rp ' . number_format($amount, 0, ',', '.') . '';
-}
 
 // --- LOGIKA PENGAMBILAN DATA HARIAN (Menggunakan $selected_date) ---
 $today_sales_summary = [
@@ -180,19 +285,6 @@ if ($stmt_recent_sales) {
     $stmt_recent_sales->execute();
     $recent_sales_history = $stmt_recent_sales->get_result()->fetch_all(MYSQLI_ASSOC);
     $stmt_recent_sales->close();
-}
-
-// Helper untuk mengubah key paket menjadi nama yang rapi
-function getPackageDisplayName($key) {
-    $map = [
-        'regular_table' => 'Regular Table',
-        'vip_table' => 'VIP Table',
-        'vvip_table' => 'VVIP Table',
-        'vvip_room_only' => 'VVIP Room Only',
-        'vvip_room_angel_demon' => 'VVIP Room + Angel',
-        'svip_room_angel_demon' => 'SVIP Room + Angel',
-    ];
-    return $map[$key] ?? ucwords(str_replace('_', ' ', $key));
 }
 ?>
 
@@ -382,7 +474,6 @@ function getPackageDisplayName($key) {
             align-items: flex-end;
         }
 
-
         @media (max-width: 1024px) {
             .calculator-grid {
                 grid-template-columns: 1fr;
@@ -559,12 +650,19 @@ function getPackageDisplayName($key) {
                         <h4 style="border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
                             Riwayat Transaksi (<?= count($recent_sales_history) ?> Entri)
                         </h4>
+                        
+                        <form method="POST" onsubmit="return confirm('⚠️ PERINGATAN KERAS! Yakin ingin menghapus SELURUH riwayat transaksi Table & Room? Tindakan ini TIDAK DAPAT DIBATALKAN dan akan menghapus semua entri dari database.')" style="margin-top: 10px;">
+                            <input type="hidden" name="action" value="delete_all_sales">
+                            <button type="submit" class="btn btn-danger btn-sm">
+                                <span class="btn-icon">🗑️</span> Hapus SELURUH Riwayat
+                            </button>
+                        </form>
                     </div>
 
                     <?php if (empty($recent_sales_history)): ?>
                         <div class="no-data">Tidak ada riwayat input Table & Room pada tanggal ini.</div>
                     <?php else: ?>
-                        <ul class="recent-sales-list">
+                        <ul class="recent-sales-list" style="margin-top: 15px;">
                             <?php foreach ($recent_sales_history as $sale): ?>
                                 <li class="recent-sales-item">
                                     <span class="time-info">
@@ -575,11 +673,21 @@ function getPackageDisplayName($key) {
                                         <span class="name-info">Talent: <?= htmlspecialchars($sale['talent_name']) ?></span>
                                     <?php endif; ?>
                                     
-                                    <strong>Paket: <?= getPackageDisplayName($sale['base_package']) ?></strong>
-                                    <span class="net-revenue">Net Revenue: <?= formatRupiah($sale['total_net_revenue']) ?></span>
-                                    <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-secondary);">
-                                        <span>Talent Share: <?= formatRupiah($sale['talent_share']) ?></span>
-                                        <span>Elysium Share: <?= formatRupiah($sale['elysium_share']) ?></span>
+                                    <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 5px;">
+                                        <div>
+                                            <strong>Paket: <?= getPackageDisplayName($sale['base_package']) ?></strong>
+                                            <span class="net-revenue" style="display: block;">Net Revenue: <?= formatRupiah($sale['total_net_revenue']) ?></span>
+                                            <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-secondary); margin-top: 5px;">
+                                                <span>Talent Share: <?= formatRupiah($sale['talent_share']) ?> | </span>
+                                                <span>  | Elysium Share: <?= formatRupiah($sale['elysium_share']) ?></span>
+                                            </div>
+                                        </div>
+                                        
+                                        <form method="POST" onsubmit="return confirm('Yakin ingin menghapus transaksi ID: <?= $sale['id'] ?>? Tindakan ini TIDAK DAPAT DIBATALKAN.')" style="flex-shrink: 0;">
+                                            <input type="hidden" name="action" value="delete_single_sale">
+                                            <input type="hidden" name="sale_id" value="<?= $sale['id'] ?>">
+                                            <button type="submit" class="btn btn-danger btn-sm">Hapus</button>
+                                        </form>
                                     </div>
                                 </li>
                             <?php endforeach; ?>

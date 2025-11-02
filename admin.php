@@ -104,21 +104,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             break;
 
-        case 'reset_weekly_data':
-            // Reset duty hours
-            $conn->query("UPDATE employees SET total_duty_hours = 0");
-            
-            // Archive old sales data (optional - you might want to keep historical data)
-            $conn->query("UPDATE system_settings SET setting_value = CURDATE() WHERE setting_key = 'last_weekly_reset'");
-            
-            $success = "Data mingguan berhasil direset!";
-            // PERBAIKAN: Kirim data sebagai array asosiatif
-            sendDiscordNotification([
-                'action_type' => 'reset_weekly_data',
-                'admin_name' => $user['name']
-            ], 'admin_system_action'); // Gunakan tipe notifikasi yang benar
-            break;
-
         case 'deactivate_employee':
             $employee_id = (int)($_POST['employee_id'] ?? 0);
             
@@ -206,6 +191,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             break;
 
+        case 'update_discord_id':
+            $employee_id = (int)($_POST['employee_id'] ?? 0);
+            $new_discord_id = trim($_POST['new_discord_id'] ?? '');
+
+            if ($employee_id <= 0) {
+                $error = "ID anggota tidak valid!";
+            } else {
+                // Get employee name and current Discord ID for feedback/notification
+                $stmt_get = $conn->prepare("SELECT name, discord_id FROM employees WHERE id = ?");
+                $stmt_get->bind_param("i", $employee_id);
+                $stmt_get->execute();
+                $employee_data = $stmt_get->get_result()->fetch_assoc();
+                $stmt_get->close();
+
+                if ($employee_data) {
+                    $old_discord_id = $employee_data['discord_id'] ?? '';
+                    
+                    // Use NULL if the input is empty string, otherwise use the new ID
+                    $discord_id_to_save = empty($new_discord_id) ? NULL : $new_discord_id;
+                    
+                    $stmt_update = $conn->prepare("UPDATE employees SET discord_id = ? WHERE id = ?");
+                    if (!$stmt_update) {
+                        $error = "Gagal menyiapkan query update Discord ID: " . $conn->error;
+                    } else {
+                        $stmt_update->bind_param("si", $discord_id_to_save, $employee_id);
+                        if ($stmt_update->execute()) {
+                            $action_desc = empty($new_discord_id) ? 'dihapus' : (empty($old_discord_id) ? 'ditambahkan' : 'diubah');
+                            $success = "Discord ID untuk " . htmlspecialchars($employee_data['name']) . " berhasil {$action_desc}!";
+                            
+                            sendDiscordNotification([
+                                'action_type' => 'update_discord_id',
+                                'target_employee_name' => $employee_data['name'],
+                                'old_value' => $old_discord_id,
+                                'new_value' => $new_discord_id,
+                                'admin_name' => $user['name']
+                            ], 'admin_employee_action');
+                        } else {
+                            $error = "Gagal memperbarui Discord ID: " . $stmt_update->error;
+                        }
+                        $stmt_update->close();
+                    }
+                } else {
+                    $error = "Anggota tidak ditemukan!";
+                }
+            }
+            break;
+
         default:
             $error = "Aksi tidak dikenal.";
             break;
@@ -231,6 +263,18 @@ $employees = $conn->query("
         END,
         name
 ")->fetch_all(MYSQLI_ASSOC);
+
+// Get all active employees along with their discord_id for the management form (Sorted by missing ID)
+$stmt_discord_list = $conn->query("
+    SELECT id, name, role, discord_id 
+    FROM employees 
+    WHERE status = 'active'
+    ORDER BY 
+        CASE WHEN discord_id IS NULL OR discord_id = '' THEN 0 ELSE 1 END,
+        name
+");
+$discord_management_list = $stmt_discord_list->fetch_all(MYSQLI_ASSOC);
+
 
 // Get system statistics
 $stats = [];
@@ -429,37 +473,64 @@ $stats['pending_requests'] = $conn->query("
             </div>
 
             <div id="system-admin-tab" class="tab-content">
-                <div class="card">
-                    <div class="card-header">
-                        <h3>Pengaturan Sistem</h3>
+                <div class="content-grid">
+                    <div class="card full-width">
+                        <div class="card-header">
+                            <h3>Kelola Discord ID Anggota</h3>
+                        </div>
+                        <div class="card-content">
+                            <div class="info-message" style="margin-bottom: var(--spacing-xl);">
+                                <strong>Info:</strong> Tambahkan atau perbarui Discord User ID (contoh: 123456789012345678). Anggota yang tidak memiliki ID akan muncul paling atas. Kosongkan ID untuk menghapusnya.
+                            </div>
+                            <form method="POST">
+                                <input type="hidden" name="action" value="update_discord_id">
+                                
+                                <div class="form-group">
+                                    <label for="employee_id_discord">Pilih Anggota</label>
+                                    <select name="employee_id" id="employee_id_discord" class="form-select" required>
+                                        <option value="">-- Pilih Anggota --</option>
+                                        <?php foreach ($discord_management_list as $emp): ?>
+                                            <option value="<?= $emp['id'] ?>">
+                                                <?= htmlspecialchars($emp['name']) ?> (<?= getRoleDisplayName($emp['role']) ?>) 
+                                                [ID Saat Ini: <?= empty($emp['discord_id']) ? '❌ Belum Ada' : htmlspecialchars($emp['discord_id']) ?>]
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="new_discord_id">Discord User ID Baru</label>
+                                    <input type="text" name="new_discord_id" id="new_discord_id" class="form-input" 
+                                           placeholder="Masukkan Discord ID (Kosongkan untuk menghapus)">
+                                </div>
+                                
+                                <button type="submit" class="btn btn-primary">Simpan Discord ID</button>
+                            </form>
+                        </div>
                     </div>
-                    <div class="card-content">
-                        <div class="system-actions">
-                            <div class="action-item">
-                                <div class="action-info">
-                                    <h4>Reset Data Mingguan</h4>
-                                    <p>Reset total jam duty dan data penjualan semua anggota untuk minggu baru</p>
+
+                    <div class="card full-width">
+                        <div class="card-header">
+                            <h3>Pengaturan Sistem Lainnya</h3>
+                        </div>
+                        <div class="card-content">
+                            <div class="system-actions">
+                                
+                                <div class="action-item">
+                                    <div class="action-info">
+                                        <h4>Backup Database</h4>
+                                        <p>Buat backup database sistem (fitur akan segera tersedia)</p>
+                                    </div>
+                                    <button class="btn btn-secondary" disabled>Backup Database</button>
                                 </div>
-                                <form method="POST" id="reset_weekly_data_form" onsubmit="return confirm('Yakin ingin mereset semua data mingguan? Tindakan ini tidak dapat dibatalkan!')">
-                                    <input type="hidden" name="action" value="reset_weekly_data">
-                                    <button type="submit" class="btn btn-warning">Reset Data Mingguan</button>
-                                </form>
-                            </div>
-                            
-                            <div class="action-item">
-                                <div class="action-info">
-                                    <h4>Backup Database</h4>
-                                    <p>Buat backup database sistem (fitur akan segera tersedia)</p>
+                                
+                                <div class="action-item">
+                                    <div class="action-info">
+                                        <h4>Pengaturan Discord</h4>
+                                        <p>Konfigurasi integrasi dengan Discord bot (fitur akan segera tersedia)</p>
+                                    </div>
+                                    <button class="btn btn-secondary" disabled>Konfigurasi Discord</button>
                                 </div>
-                                <button class="btn btn-secondary" disabled>Backup Database</button>
-                            </div>
-                            
-                            <div class="action-item">
-                                <div class="action-info">
-                                    <h4>Pengaturan Discord</h4>
-                                    <p>Konfigurasi integrasi dengan Discord bot (fitur akan segera tersedia)</p>
-                                </div>
-                                <button class="btn btn-secondary" disabled>Konfigurasi Discord</button>
                             </div>
                         </div>
                     </div>
@@ -493,7 +564,6 @@ $stats['pending_requests'] = $conn->query("
             const newRole = newRoleSelect.value;
             
             // Dapatkan nilai role saat ini dari atribut data-role atau option yang selected
-            // Ini akan memastikan kita membandingkan dengan role yang *saat ini* dipilih di UI
             const currentSelectedOption = newRoleSelect.querySelector('option[value="' + newRoleSelect.value + '"][selected]');
             const currentRole = currentSelectedOption ? currentSelectedOption.value : null;
             
@@ -553,8 +623,7 @@ $stats['pending_requests'] = $conn->query("
                 });
             }
 
-            // General form submit handler for other forms (e.g., reset weekly data)
-            // Note: role-change-form and deactivate-form are handled by specific JS functions
+            // General form submit handler for other forms (e.g., system actions and discord update)
             const otherForms = document.querySelectorAll('form:not(#add_employee_form):not(.role-change-form):not(.deactivate-form)');
             
             otherForms.forEach(form => {

@@ -119,21 +119,91 @@ if ($rooms_result) {
             background: var(--bg-card);
             border-radius: var(--radius-2xl);
             box-shadow: var(--shadow-md);
+            position: relative; /* Penting untuk penempatan link admin */
         }
+        
+        /* Header Refinements */
         .page-header h1 {
+            font-size: 2.2rem;
+            font-weight: 800;
             justify-content: center; 
-            font-size: 2rem;
-            margin-bottom: var(--spacing-sm);
+            color: var(--text-primary);
         }
+        
         .page-header p {
+            font-size: 1.05rem;
             color: var(--text-secondary);
-            font-size: 1rem;
-            margin: 0 auto; 
-            max-width: 600px;
+            margin: 5px auto 0;
         }
-        .page-header .page-icon {
-            background: none;
-            padding: 0;
+
+        /* New Wrapper for Tidy Look (Header Action) */
+        .header-actions-wrapper {
+            margin-top: var(--spacing-xl);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: var(--spacing-lg);
+            position: relative;
+        }
+        
+        .katalog-info-box {
+            background: var(--bg-secondary);
+            border: 2px solid var(--primary-color);
+            border-radius: var(--radius-lg);
+            padding: var(--spacing-lg);
+            width: 100%;
+            max-width: 550px;
+            text-align: left;
+            position: relative;
+        }
+        
+        .katalog-info-box strong {
+            display: block;
+            font-size: 1rem;
+            color: var(--primary-color);
+            margin-bottom: 5px;
+        }
+
+        .katalog-info-box p {
+             margin: 0 0 10px 0;
+             font-size: 0.95rem;
+        }
+        
+        .btn-katalog {
+            font-size: 0.9rem !important;
+            padding: 0.5rem 1.25rem !important;
+        }
+
+        /* Discreet Admin Link Style (Moved to top right corner of the header card) */
+        .discreet-admin-link {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-decoration: none;
+            padding: 5px 10px;
+            border-radius: var(--radius-md);
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .discreet-admin-link:hover {
+            color: var(--primary-color);
+            background: var(--bg-secondary);
+        }
+        
+        /* Media Query for positioning the discreet link on smaller screens */
+        @media (max-width: 768px) {
+            .discreet-admin-link {
+                position: static;
+                order: 3; /* Move to bottom of wrapper */
+                margin-top: 10px;
+                font-size: 0.85rem;
+                justify-content: center;
+            }
         }
 
         /* Grid Ruangan */
@@ -145,7 +215,7 @@ if ($rooms_result) {
 
         /* Card Ruangan yang Ditingkatkan */
         .room-card {
-            background: linear-gradient(145deg, var(--bg-card), var(--bg-secondary));
+            background: var(--bg-card);
             border: 1px solid var(--border-color);
             border-radius: var(--radius-2xl);
             box-shadow: var(--shadow-md);
@@ -156,71 +226,35 @@ if ($rooms_result) {
         .room-card:hover {
              transform: translateY(-5px);
              box-shadow: var(--shadow-lg);
+             border-color: var(--primary-color);
         }
         
-        /* Header Ruangan */
-        .room-header {
-            padding: var(--spacing-lg) var(--spacing-xl);
-            background: var(--bg-tertiary);
-            border-bottom: 1px solid var(--border-color);
-        }
-        
-        .room-header h3 {
-            color: var(--primary-color);
-            margin: 0;
-            font-size: 1.6rem;
-            display: flex;
-            align-items: center;
-            gap: var(--spacing-md);
-            font-weight: 700;
-        }
-        
-        /* Blok Informasi */
-        .room-info-block {
-            padding: var(--spacing-xl);
-        }
-        
-        .info-item-box {
-            background: var(--bg-secondary);
-            border-radius: var(--radius-lg);
-            padding: var(--spacing-md);
-            margin-bottom: var(--spacing-md);
-            border-left: 4px solid var(--primary-color);
-        }
-        
-        .info-item-box strong {
-            display: block;
-            font-size: 0.9rem;
-            color: var(--text-primary);
-            margin-bottom: 0.25rem;
-            font-weight: 700;
-            text-transform: uppercase;
-        }
-        
-        .info-item-box p {
-            margin: 0;
-            font-size: 0.9rem;
-            color: var(--text-secondary);
-            white-space: pre-wrap; 
-        }
-
-        /* Bagian Gambar - Gallery Container */
+        /* Bagian Gambar - Gallery Container (Paling Menonjol) */
         .room-image-container {
             width: 100%; 
-            height: 250px; 
+            height: 200px; /* Lebih kompak */
             overflow: hidden;
-            margin: var(--spacing-xl) 0;
             position: relative;
+            background: #000;
         }
         
-        /* Gallery CSS */
-        .image-gallery-wrapper {
-            width: 100%;
-            height: 100%;
-            position: relative;
-            transform: translateZ(0); 
+        /* New Top Banner Pricing */
+        .price-tag-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 0.75rem 1rem;
+            font-size: 0.95rem;
+            font-weight: 700;
+            z-index: 20;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            text-shadow: 0 0 2px #000;
+            text-align: center;
         }
-        
+
         .gallery-image {
             width: 100%;
             height: 100%;
@@ -232,29 +266,126 @@ if ($rooms_result) {
             transition: opacity 1s ease-in-out;
         }
         
+        /* Wrapper Konten */
+        .room-details-wrapper {
+             padding: var(--spacing-xl);
+        }
+
+        /* Header Ruangan Baru */
+        .room-header-new {
+            margin-bottom: var(--spacing-lg);
+            border-bottom: 2px dashed var(--border-light);
+            padding-bottom: var(--spacing-md);
+        }
+        
+        .room-header-new h3 {
+            color: var(--text-primary);
+            margin: 0;
+            font-size: 1.5rem;
+            font-weight: 700;
+            letter-spacing: -0.025em;
+        }
+        
+        .room-description-summary {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            margin: 5px 0 0;
+        }
+        
+        /* Blok Informasi Fasilitas/Ketentuan */
+        .room-info-block-new {
+            margin-bottom: var(--spacing-lg);
+        }
+        
+        .info-item-box {
+            background: var(--bg-secondary);
+            border-radius: var(--radius-md);
+            padding: var(--spacing-md);
+            margin-bottom: var(--spacing-md);
+            border-left: 4px solid var(--primary-color);
+        }
+        
+        .info-item-box strong {
+            display: block;
+            font-size: 0.85rem;
+            margin-bottom: 0.25rem;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+        
+        /* Highlight FASILITAS UNGGULAN (Biru/Hijau) */
+        .info-item-box:nth-child(1) {
+            border-left: 4px solid var(--success-color); 
+        }
+        .info-item-box:nth-child(1) strong {
+            color: var(--success-color); 
+        }
+        
+        /* Highlight KETENTUAN PENTING (Merah/Danger) */
+        .info-item-box:nth-child(2) {
+            border-left: 4px solid var(--danger-color);
+        }
+        .info-item-box:nth-child(2) strong {
+            color: var(--danger-color);
+        }
+
+        .info-item-box p {
+            margin: 0;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            white-space: pre-wrap; 
+        }
+
         /* Formulir */
         .booking-form {
             padding: var(--spacing-xl);
             border-top: 1px solid var(--border-color);
+            background: var(--bg-secondary);
         }
-
+        
         .booking-form .form-group {
-            margin-bottom: var(--spacing-lg);
+            /* Tight stacking as seen in screenshot */
+            margin-bottom: var(--spacing-md); 
         }
-
+        
+        .booking-form label {
+            /* Matches the stacked label look in the screenshot */
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-primary); 
+            margin-bottom: var(--spacing-sm);
+        }
+        
         .booking-form .form-input,
         .booking-form .form-textarea {
-            border: 1px solid var(--border-light);
-            background: var(--bg-card);
-            width: 100%; 
-            box-sizing: border-box;
+            /* Styling inputs for the dark, enclosed look from the screenshot */
+            background: var(--bg-secondary); 
+            border: 1px solid var(--border-light); 
+            border-radius: var(--radius-md);
+            padding: var(--spacing-md);
+            font-size: 1rem;
+            color: var(--text-primary);
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.3);
+        }
+
+        .booking-form .form-textarea {
+             min-height: 100px; /* Slightly taller textarea */
         }
         
         .form-row {
-             /* FIX: Menggunakan grid untuk layout 2 kolom */
              display: grid;
-             grid-template-columns: 1fr 1fr;
+             grid-template-columns: 3fr 2fr; /* Proporsi Tanggal dan Jam */
              gap: var(--spacing-md);
+        }
+
+        .booking-form .btn-primary {
+            /* Prominent yellow button matching the example */
+            background: #FFC107; 
+            color: #121212;
+            font-weight: 700;
+            box-shadow: 0 4px 10px rgba(255, 193, 7, 0.4);
+            width: 100%;
+            margin-top: var(--spacing-lg);
         }
         
         /* Mobile Responsif */
@@ -263,32 +394,11 @@ if ($rooms_result) {
                 padding: 0 10px;
             }
             .form-row {
-                /* FIX: Kembali ke 1 kolom di mobile untuk menghindari pemotongan */
                 grid-template-columns: 1fr;
             }
-            
-            /* FIX: Memastikan input di form-row mengambil lebar penuh di layout 1 kolom */
-            .form-row .form-group {
-                width: 100%;
-            }
-            .form-row .form-group .form-input {
-                width: 100%;
-            }
-
             .room-image-container {
-                height: 180px;
+                height: 160px;
             }
-            .room-header h3 {
-                font-size: 1.4rem;
-            }
-        }
-        
-        /* Styling untuk tombol pesan agar full width */
-        .booking-form .btn-primary {
-            width: 100%;
-            font-size: 1rem;
-            padding: var(--spacing-md) var(--spacing-xl);
-            margin-top: var(--spacing-lg);
         }
     </style>
 </head>
@@ -303,22 +413,20 @@ if ($rooms_result) {
                     </h1>
                     <p>Lihat detail ruangan dan ajukan pemesanan. Kami akan segera menghubungi Anda untuk konfirmasi.</p>
                     
-                    <div style="margin-top: 25px; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 0 10px;">
-                        
-                        <div class="info-item-box" style="border-left-color: var(--info-color); background: var(--bg-secondary); padding: 10px 20px; text-align: left; width: 100%; max-width: 500px;">
-                            <strong>Katalog Elysium:</strong> Di dalamnya terdapat informasi lengkap mengenai **TNC** (Syarat & Ketentuan) dan **Katalog Talent** yang tersedia.
+                    <div class="header-actions-wrapper">
+                        <div class="katalog-info-box">
+                            <strong>Katalog Elysium:</strong>
+                            <p>Di dalamnya terdapat informasi lengkap mengenai **TNC** (Syarat & Ketentuan) dan **Katalog Talent** yang tersedia.</p>
+                            <a href="https://elysium-night-club.my.canva.site/" target="_blank" class="btn btn-info btn-sm btn-katalog">
+                                <span class="btn-icon">📚</span> Lihat Katalog Elysium
+                            </a>
                         </div>
 
-                        <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; width: 100%;">
-                            <a href="https://elysium-night-club.my.canva.site/" target="_blank" class="btn btn-info btn-sm">
-                                <span class="btn-icon">📚</span> Katalog Elysium
-                            </a>
-                            <a href="manage-public-booking.php" class="btn btn-warning btn-sm">
-                                <span class="btn-icon">⚙️</span> Admin Login
-                            </a>
-                        </div>
+                        <a href="manage-public-booking.php" class="discreet-admin-link">
+                            <span class="btn-icon">⚙️</span> Admin Login Area
+                        </a>
                     </div>
-                    </div>
+                </div>
 
                 <?php if (isset($success)): ?>
                     <div class="success-message">🎉 <?= htmlspecialchars($success) ?></div>
@@ -332,43 +440,44 @@ if ($rooms_result) {
                     <?php foreach ($rooms_data as $room): ?>
                     <div class="room-card">
                         
-                        <div class="room-header">
-                            <h3><?= htmlspecialchars($room['room_name']) ?></h3>
+                        <div class="room-image-container">
+                            <div class="image-gallery-wrapper" id="gallery-<?= $room['id'] ?>">
+                                <?php if (!empty($room['images'])): ?>
+                                    <?php foreach ($room['images'] as $index => $image): ?>
+                                        <img src="<?= htmlspecialchars($image['image_path']) ?>" 
+                                             alt="Foto <?= htmlspecialchars($room['room_name']) ?> <?= $index + 1 ?>" 
+                                             class="gallery-image" 
+                                             style="opacity: <?= $index === 0 ? '1' : '0' ?>; z-index: <?= 10 - $index ?>;">
+                                    <?php endforeach; ?>
+                                <?php else: ?>
+                                    <div style="background-color: var(--bg-tertiary); display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;">
+                                        <span style="color: var(--text-secondary);">[Image not available]</span>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
+                            <span class="price-tag-overlay">
+                                <?= htmlspecialchars($room['price_info'] ?? 'Harga Tanyakan Admin') ?>
+                            </span>
                         </div>
-
-                        <div class="room-info-block">
-                            <p style="color: var(--text-muted); margin-bottom: var(--spacing-lg);"><?= htmlspecialchars($room['description'] ?? '') ?></p>
+                        
+                        <div class="room-details-wrapper">
                             
-                            <div class="room-image-container">
-                                <div class="image-gallery-wrapper" id="gallery-<?= $room['id'] ?>">
-                                    <?php if (!empty($room['images'])): ?>
-                                        <?php foreach ($room['images'] as $index => $image): ?>
-                                            <img src="<?= htmlspecialchars($image['image_path']) ?>" 
-                                                 alt="Foto <?= htmlspecialchars($room['room_name']) ?> <?= $index + 1 ?>" 
-                                                 class="gallery-image" 
-                                                 style="opacity: <?= $index === 0 ? '1' : '0' ?>; z-index: <?= 10 - $index ?>;">
-                                        <?php endforeach; ?>
-                                    <?php else: ?>
-                                        <div style="background-color: var(--bg-tertiary); display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;">
-                                            <span style="color: var(--text-secondary);">[Image not available]</span>
-                                        </div>
-                                    <?php endif; ?>
+                            <div class="room-header-new">
+                                <h3><?= htmlspecialchars($room['room_name']) ?></h3>
+                                <p class="room-description-summary"><?= htmlspecialchars($room['description'] ?? '') ?></p>
+                            </div>
+
+                            <div class="room-info-block-new">
+                                
+                                <div class="info-item-box">
+                                    <strong>FASILITAS UNGGULAN</strong>
+                                    <p><?= nl2br(htmlspecialchars($room['facilities'] ?? 'N/A')) ?></p>
                                 </div>
-                            </div>
-
-                            <div class="info-item-box" style="border-left-color: var(--success-color);">
-                                <strong>Harga</strong>
-                                <p><?= htmlspecialchars($room['price_info'] ?? 'Tanyakan kepada Admin') ?></p>
-                            </div>
-                            
-                            <div class="info-item-box">
-                                <strong>Fasilitas</strong>
-                                <p><?= htmlspecialchars($room['facilities'] ?? 'N/A') ?></p>
-                            </div>
-                            
-                            <div class="info-item-box" style="margin-bottom: 0;">
-                                <strong>Ketentuan</strong>
-                                <p><?= nl2br(htmlspecialchars($room['rules'] ?? 'Tidak ada ketentuan khusus.')) ?></p>
+                                
+                                <div class="info-item-box">
+                                    <strong>KETENTUAN PENTING</strong>
+                                    <p><?= nl2br(htmlspecialchars($room['rules'] ?? 'Tidak ada ketentuan khusus.')) ?></p>
+                                </div>
                             </div>
                         </div>
 
@@ -377,18 +486,13 @@ if ($rooms_result) {
                             <input type="hidden" name="room_id" value="<?= $room['id'] ?>">
                             
                             <div class="form-group">
-                                <label for="booking_name_<?= $room['id'] ?>">NAMA ANDA</label>
+                                <label for="booking_name_<?= $room['id'] ?>">NAMA IC ANDA</label>
                                 <input type="text" name="booking_name" id="booking_name_<?= $room['id'] ?>" class="form-input" required>
                             </div>
                             
                             <div class="form-group">
-                                <label for="phone_number_<?= $room['id'] ?>">NOMOR HP (Whatsapp Aktif)</label>
+                                <label for="phone_number_<?= $room['id'] ?>">NOMOR HP IC</label>
                                 <input type="tel" name="phone_number" id="phone_number_<?= $room['id'] ?>" class="form-input" placeholder="08xxxxxxxxxx" required>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="booking_purpose_<?= $room['id'] ?>">TUJUAN BOOKING</label>
-                                <textarea name="booking_purpose" id="booking_purpose_<?= $room['id'] ?>" rows="2" class="form-textarea" placeholder="Contoh: Ulang tahun teman, meeting, dll."></textarea>
                             </div>
 
                             <div class="form-row">
@@ -400,6 +504,11 @@ if ($rooms_result) {
                                     <label for="booking_time_<?= $room['id'] ?>">JAM</label>
                                     <input type="time" name="booking_time" id="booking_time_<?= $room['id'] ?>" class="form-input" required>
                                 </div>
+                            </div>
+                            
+                            <div class="form-group" style="margin-top: 20px; margin-bottom: 0;">
+                                <label for="booking_purpose_<?= $room['id'] ?>">TUJUAN BOOKING</label>
+                                <textarea name="booking_purpose" id="booking_purpose_<?= $room['id'] ?>" rows="2" class="form-textarea" placeholder="Contoh: Ulang tahun teman, meeting, dll."></textarea>
                             </div>
                             
                             <button type="submit" class="btn btn-primary">Pesan Sekarang</button>

@@ -65,6 +65,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 throw new Exception("Gagal mereset semua status pembayaran. Mungkin tidak ada yang perlu direset.");
             }
             $stmt->close();
+            
+        } elseif ($action === 'delete_all_activity_data') {
+            // Aksi menghapus semua data aktivitas (sales_data dan completed duty_logs) untuk semua anggota
+            
+            // Cek otorisasi lebih ketat untuk mass delete
+            if (!hasRole(['ceo', 'direktur', 'wakil_direktur'])) {
+                 throw new Exception("Anda tidak memiliki izin untuk menghapus semua data aktivitas.");
+            }
+
+            // 1. Hapus semua data penjualan (sales_data)
+            $stmt_delete_sales = $conn->prepare("DELETE FROM sales_data");
+            if (!$stmt_delete_sales) {
+                throw new Exception("Gagal menyiapkan query hapus data penjualan massal: " . $conn->error);
+            }
+            $stmt_delete_sales->execute();
+            $deleted_sales_count = $stmt_delete_sales->affected_rows;
+            $stmt_delete_sales->close();
+
+            // 2. Hapus semua log jam kerja dengan status 'completed' (duty_logs)
+            $stmt_delete_duty = $conn->prepare("DELETE FROM duty_logs WHERE status = 'completed'");
+            if (!$stmt_delete_duty) {
+                throw new Exception("Gagal menyiapkan query hapus log jam kerja massal: " . $conn->error);
+            }
+            $stmt_delete_duty->execute();
+            $deleted_duty_count = $stmt_delete_duty->affected_rows;
+            $stmt_delete_duty->close();
+
+            $conn->commit();
+            $success_message = "Semua data aktivitas (**{$deleted_sales_count} penjualan** dan **{$deleted_duty_count} log duty selesai**) berhasil dihapus untuk **SEMUA** anggota.";
+
+            sendDiscordNotification([
+                'admin_name' => $user['name'],
+                'deleted_sales' => $deleted_sales_count,
+                'deleted_duty_logs' => $deleted_duty_count,
+                'action_type' => 'mass_activity_delete'
+            ], 'admin_system_action'); // Use a general admin action notification
+        
         } else {
             // Aksi-aksi berikut memerlukan employee_id
             if ($employee_id <= 0) {
@@ -421,6 +458,14 @@ if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
                             <span class="btn-icon">🔄</span> Reset Semua Status Bayar
                         </button>
                     </form>
+                    <?php if (hasRole(['ceo', 'direktur', 'wakil_direktur'])): // Batasi hanya untuk level Direktur ke atas ?>
+                    <form method="POST" style="display: inline;" onsubmit="return confirm('⚠️ PERINGATAN KERAS! Yakin ingin menghapus SELURUH data penjualan dan jam kerja (completed) untuk SEMUA anggota? Tindakan ini TIDAK DAPAT DIBATALKAN.')">
+                        <input type="hidden" name="action" value="delete_all_activity_data">
+                        <button type="submit" class="btn btn-danger">
+                            <span class="btn-icon">🗑️</span> Hapus Semua Data Aktivitas
+                        </button>
+                    </form>
+                    <?php endif; ?>
                 </div>
             </div>
 

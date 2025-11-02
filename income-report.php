@@ -9,14 +9,91 @@ if (!isLoggedIn() || !hasRole(['ceo', 'direktur', 'wakil_direktur', 'manager']))
 $user = getCurrentUser();
 $pending_requests_count = getPendingRequestCount();
 
+// --- Definisi Logika Gaji & Konstanta (Dari salary-recap.php) ---
+/**
+ * Membulatkan total menit duty ke jam terdekat.
+ */
+function roundToNearestHour($minutes) {
+    return round($minutes / 60);
+}
+
+// Definisi gaji per jam baru (Rupiah per jam)
+$hourly_rates = [
+    'ceo' => 40000,          
+    'direktur' => 40000,     
+    'wakil_direktur' => 40000, 
+    'manager' => 24400,
+    'guard' => 19200,
+    'barista' => 19200,
+    'waiters' => 14000,
+    'karyawan' => 14000,
+    'magang' => 9600,
+    'chef' => 0,
+];
+
+// Konstanta perhitungan (dalam jam)
+$MIN_DUTY_FULL_PAY_HOURS = 10;
+$MIN_DUTY_40_CUT_HOURS = 8; 
+
+// --- Hitung Total Pengeluaran Gaji (Replikasi Logika salary-recap.php) ---
+$total_payroll_expenditure = 0;
+$employees_raw_data_payroll = $conn->query("
+    SELECT e.id, e.name, e.role,
+           COALESCE(duty_summary.total_duty_minutes, 0) as total_duty_minutes
+    FROM employees e
+    LEFT JOIN (
+        SELECT
+            employee_id,
+            SUM(duration_minutes) as total_duty_minutes
+        FROM duty_logs
+        WHERE status = 'completed'
+        GROUP BY employee_id
+    ) as duty_summary ON e.id = duty_summary.employee_id
+    WHERE e.status = 'active'
+");
+
+if ($employees_raw_data_payroll) {
+    while ($employee = $employees_raw_data_payroll->fetch_assoc()) {
+        $employee_role = $employee['role'];
+        $total_duty_minutes = $employee['total_duty_minutes'];
+        $rounded_duty_hours = roundToNearestHour($total_duty_minutes);
+        
+        $gaji_pokok = 0;
+        $total_gajian = 0;
+
+        if (isset($hourly_rates[$employee_role])) {
+            $hourly_rate = $hourly_rates[$employee_role];
+            $base_salary = $rounded_duty_hours * $hourly_rate;
+            $gaji_pokok = $base_salary; 
+
+            if (in_array($employee_role, ['chef'])) {
+                $total_gajian = 0;
+            } elseif (in_array($employee_role, ['ceo', 'direktur', 'wakil_direktur'])) {
+                $total_gajian = $gaji_pokok;
+            } else {
+                if ($rounded_duty_hours >= $MIN_DUTY_FULL_PAY_HOURS) {
+                    $total_gajian = $gaji_pokok;
+                } elseif ($rounded_duty_hours >= $MIN_DUTY_40_CUT_HOURS) {
+                    $total_gajian = $gaji_pokok * 0.60;
+                } else {
+                    $total_gajian = $gaji_pokok * 0.50;
+                }
+            }
+        }
+        $total_payroll_expenditure += $total_gajian;
+    }
+    $employees_raw_data_payroll->data_seek(0); // Reset pointer untuk menghindari error jika diulang
+}
+
+
 // Definisi harga per paket (UPDATED)
 $price_sake = 20000;
 $price_anggur_merah = 20000;
 $price_tuak = 20000;
 $price_soju = 20000;
 $price_spicy_1 = 65000;
-$price_azul_1 = 25000; // NEW PRICE
-$price_azul_2 = 20000; // NEW PRICE
+$price_azul_1 = 25000;
+$price_azul_2 = 20000;
 
 // Variabel Ruangan Dihapus (Diatur ke 0)
 $price_vip_person = 0;
@@ -43,7 +120,7 @@ $total_azul_1_packages = 0;
 $total_azul_2_packages = 0;
 
 
-// Ambil total pemasukan dari sales_data secara menyeluruh
+// Ambil total pemasukan dari sales_data (Paket Minum)
 $stmt = $conn->prepare("
     SELECT
         COALESCE(SUM(paket_sake), 0) as sum_sake,
@@ -75,15 +152,33 @@ if ($stmt) {
         $total_income_tuak = $total_tuak_packages * $price_tuak;
         $total_income_soju = $total_soju_packages * $price_soju;
         $total_income_spicy_1 = $total_spicy_1_packages * $price_spicy_1;
-        $total_income_azul_1 = $total_azul_1_packages * $price_azul_1; // NEW CALC
-        $total_income_azul_2 = $total_azul_2_packages * $price_azul_2; // NEW CALC
+        $total_income_azul_1 = $total_azul_1_packages * $price_azul_1;
+        $total_income_azul_2 = $total_azul_2_packages * $price_azul_2;
 
-        // OVERALL TOTAL INCOME (UPDATED)
+        // OVERALL TOTAL INCOME (Revenue from sales_data only)
         $overall_total_income = $total_income_sake + $total_income_anggur_merah + $total_income_tuak + $total_income_soju + $total_income_spicy_1 + $total_income_azul_1 + $total_income_azul_2;
     }
 } else {
     die("Gagal menyiapkan query: " . $conn->error);
 }
+
+// --- Fetch Total Elysium Share (from sales_table_room) ---
+$total_elysium_share = 0;
+$stmt_share = $conn->query("SELECT COALESCE(SUM(elysium_share), 0) as total_share FROM sales_table_room");
+if ($stmt_share) {
+    $total_elysium_share = (float)$stmt_share->fetch_assoc()['total_share'];
+    $stmt_share->close();
+}
+
+
+// --- Pemasukan Kotor (Gross Income) ---
+// Gross Income = Total Revenue (Paket Minum) + Total Elysium Share (Table/Room)
+$gross_income = $overall_total_income + $total_elysium_share;
+
+// --- Pemasukan Bersih (Net Income) ---
+// Net Income = Gross Income - Total Payroll Expenditure
+$net_income = $gross_income - $total_payroll_expenditure;
+
 
 // --- Data untuk Grafik Omset Mingguan (Senin-Minggu) ---
 $daily_revenue_data = [];
@@ -95,20 +190,23 @@ if ($start_of_week->format('N') != 1) {
 $end_of_week = clone $start_of_week;
 $end_of_week->modify('+6 days');
 
+// Query gabungan untuk mendapatkan daily revenue dari sales_data dan daily elysium_share dari sales_table_room
 $stmt_daily = $conn->prepare("
     SELECT
-        date,
-        SUM(paket_sake) as sum_sake_daily,
-        SUM(paket_anggur_merah) as sum_anggur_merah_daily,
-        SUM(paket_tuak) as sum_tuak_daily,
-        SUM(paket_soju) as sum_soju_daily,
-        SUM(paket_spicy_1) as sum_spicy_1_daily,
-        SUM(paket_spicy_2) as sum_azul_1_daily,
-        SUM(paket_spicy_3) as sum_azul_2_daily
-    FROM sales_data
-    WHERE date BETWEEN ? AND ?
-    GROUP BY date
-    ORDER BY date ASC
+        sd.date,
+        SUM(sd.paket_sake) as sum_sake_daily,
+        SUM(sd.paket_anggur_merah) as sum_anggur_merah_daily,
+        SUM(sd.paket_tuak) as sum_tuak_daily,
+        SUM(sd.paket_soju) as sum_soju_daily,
+        SUM(sd.paket_spicy_1) as sum_spicy_1_daily,
+        SUM(sd.paket_spicy_2) as sum_azul_1_daily,
+        SUM(sd.paket_spicy_3) as sum_azul_2_daily,
+        COALESCE(SUM(str.elysium_share), 0) as sum_elysium_share_daily
+    FROM sales_data sd
+    LEFT JOIN sales_table_room str ON sd.date = DATE(str.sale_date)
+    WHERE sd.date BETWEEN ? AND ?
+    GROUP BY sd.date
+    ORDER BY sd.date ASC
 ");
 if ($stmt_daily) {
     $stmt_daily->bind_param("ss", $start_of_week->format('Y-m-d'), $end_of_week->format('Y-m-d'));
@@ -117,13 +215,16 @@ if ($stmt_daily) {
     
     $chart_data_from_db = [];
     while ($row = $daily_results->fetch_assoc()) {
-        $chart_data_from_db[$row['date']] = (float) ($row['sum_sake_daily'] * $price_sake) +
-                                             (float) ($row['sum_anggur_merah_daily'] * $price_anggur_merah) +
-                                             (float) ($row['sum_tuak_daily'] * $price_tuak) +
-                                             (float) ($row['sum_soju_daily'] * $price_soju) +
-                                             (float) ($row['sum_spicy_1_daily'] * $price_spicy_1) +
-                                             (float) ($row['sum_azul_1_daily'] * $price_azul_1) + 
-                                             (float) ($row['sum_azul_2_daily'] * $price_azul_2); 
+        $daily_sales_data_revenue = (float) ($row['sum_sake_daily'] * $price_sake) +
+                                     (float) ($row['sum_anggur_merah_daily'] * $price_anggur_merah) +
+                                     (float) ($row['sum_tuak_daily'] * $price_tuak) +
+                                     (float) ($row['sum_soju_daily'] * $price_soju) +
+                                     (float) ($row['sum_spicy_1_daily'] * $price_spicy_1) +
+                                     (float) ($row['sum_azul_1_daily'] * $price_azul_1) + 
+                                     (float) ($row['sum_azul_2_daily'] * $price_azul_2);
+        
+        // Daily Omset Grafik = Revenue (sales_data) + Elysium Share (sales_table_room)
+        $chart_data_from_db[$row['date']] = $daily_sales_data_revenue + (float)$row['sum_elysium_share_daily'];
     }
     $stmt_daily->close();
 } else {
@@ -147,56 +248,57 @@ $chart_data_revenue_json = json_encode($chart_data_revenue);
 
 
 // --- Data untuk Logs Omset (Detail per Input) ---
+// Query UNION untuk menggabungkan data sales_data (revenue) dan sales_table_room (elysium_share)
 $omset_logs = [];
-$stmt_logs = $conn->prepare("
-    SELECT
-        sd.id,
-        sd.date,
-        sd.input_time,
-        sd.paket_sake,
-        sd.paket_anggur_merah,
-        sd.paket_tuak,
-        sd.paket_soju,
-        sd.paket_spicy_1,
-        sd.paket_spicy_2 as paket_azul_1,
-        sd.paket_spicy_3 as paket_azul_2,
-        e.name as employee_name
-    FROM sales_data sd
-    JOIN employees e ON sd.employee_id = e.id
-    ORDER BY sd.input_time DESC
+$stmt_logs = $conn->query("
+    (
+        SELECT
+            sd.id as id,
+            sd.date,
+            sd.input_time,
+            e.name as employee_name,
+            'Paket Minum' as type_description,
+            (sd.paket_sake * {$price_sake}) + (sd.paket_anggur_merah * {$price_anggur_merah}) + (sd.paket_tuak * {$price_tuak}) + (sd.paket_soju * {$price_soju}) + (sd.paket_spicy_1 * {$price_spicy_1}) + (sd.paket_spicy_2 * {$price_azul_1}) + (sd.paket_spicy_3 * {$price_azul_2}) as omset_transaksi,
+            sd.paket_sake, sd.paket_anggur_merah, sd.paket_tuak, sd.paket_soju, sd.paket_spicy_1, sd.paket_spicy_2 as paket_azul_1, sd.paket_spicy_3 as paket_azul_2
+        FROM sales_data sd
+        JOIN employees e ON sd.employee_id = e.id
+    )
+    UNION ALL
+    (
+        SELECT
+            str.id as id,
+            str.sale_date as date,
+            str.input_time,
+            e.name as employee_name,
+            CONCAT('Table & Room (', str.base_package, ')') as type_description,
+            str.elysium_share as omset_transaksi,
+            0, 0, 0, 0, 0, 0, 0
+        FROM sales_table_room str
+        JOIN employees e ON str.employee_id = e.id
+    )
+    ORDER BY input_time DESC
 ");
 
 if ($stmt_logs) {
-    $stmt_logs->execute();
-    $log_results = $stmt_logs->get_result();
-
-    while ($row = $log_results->fetch_assoc()) {
-        $transaction_omset = ($row['paket_sake'] * $price_sake) +
-                             ($row['paket_anggur_merah'] * $price_anggur_merah) +
-                             ($row['paket_tuak'] * $price_tuak) +
-                             ($row['paket_soju'] * $price_soju) +
-                             ($row['paket_spicy_1'] * $price_spicy_1) +
-                             ($row['paket_azul_1'] * $price_azul_1) +
-                             ($row['paket_azul_2'] * $price_azul_2);
-        
+    while ($row = $stmt_logs->fetch_assoc()) {
         $omset_logs[] = [
             'id' => $row['id'],
             'date_time' => date('d/m/Y H:i:s', strtotime($row['input_time'])),
             'employee_name' => $row['employee_name'],
-            'paket_sake' => $row['paket_sake'],
-            'paket_anggur_merah' => $row['paket_anggur_merah'],
-            'paket_tuak' => $row['paket_tuak'],
-            'paket_soju' => $row['paket_soju'],
-            'paket_spicy_1' => $row['paket_spicy_1'],
-            'paket_azul_1' => $row['paket_azul_1'],
-            'paket_azul_2' => $row['paket_azul_2'],
-            'omset_transaksi' => $transaction_omset
+            'type_description' => $row['type_description'],
+            'paket_sake' => $row['paket_sake'] ?? 0,
+            'paket_anggur_merah' => $row['paket_anggur_merah'] ?? 0,
+            'paket_tuak' => $row['paket_tuak'] ?? 0,
+            'paket_soju' => $row['paket_soju'] ?? 0,
+            'paket_spicy_1' => $row['paket_spicy_1'] ?? 0,
+            'paket_azul_1' => $row['paket_azul_1'] ?? 0,
+            'paket_azul_2' => $row['paket_azul_2'] ?? 0,
+            'omset_transaksi' => (float)$row['omset_transaksi']
         ];
     }
     $stmt_logs->close();
-} else {
-    error_log("Error preparing logs query in income-report.php: " . $conn->error);
 }
+
 
 // --- Fungsionalitas Unduh Laporan Detail untuk Audit ---
 if (isset($_GET['export']) && $_GET['export'] == 'detailed_income') {
@@ -214,6 +316,7 @@ if (isset($_GET['export']) && $_GET['export'] == 'detailed_income') {
         'ID Transaksi',
         'Tanggal & Waktu Input',
         'Nama Anggota',
+        'Tipe Transaksi',
         'Sake (Jumlah)',
         'Anggur Merah (Jumlah)',
         'Tuak (Jumlah)',
@@ -221,7 +324,7 @@ if (isset($_GET['export']) && $_GET['export'] == 'detailed_income') {
         'Spicy 1 (Jumlah)',
         'Azul 1 (Jumlah)',        
         'Azul 2 (Jumlah)',    
-        'Omset Transaksi (Rp)'
+        'Omset Kotor Transaksi (Rp)'
     ];
     fputcsv($output, $headers);
 
@@ -230,6 +333,7 @@ if (isset($_GET['export']) && $_GET['export'] == 'detailed_income') {
             $log['id'],
             $log['date_time'],
             htmlspecialchars_decode($log['employee_name']),
+            $log['type_description'],
             $log['paket_sake'],
             $log['paket_anggur_merah'],
             $log['paket_tuak'],
@@ -302,6 +406,10 @@ function formatRupiah($amount) {
         }
         .income-card.total .value {
             color: var(--success-color);
+            font-size: 2.8rem;
+        }
+        .income-card.danger-total .value { /* Gaya baru untuk pengeluaran/net */
+            color: var(--danger-color);
             font-size: 2.8rem;
         }
         .income-card .detail-text {
@@ -381,25 +489,24 @@ function formatRupiah($amount) {
                 text-align: left;
                 white-space: nowrap;
             }
-            .logs-omset-section .activities-table-improved td:first-child {
-                 width: 18%;
-                 min-width: 120px;
-                 text-align: left;
-            }
-            .logs-omset-section .activities-table-improved td:nth-child(2) {
-                 width: 20%;
-                 min-width: 150px;
-                 white-space: normal;
-            }
             .logs-omset-section .activities-table-improved td:nth-child(3),
             .logs-omset-section .activities-table-improved td:nth-child(4),
             .logs-omset-section .activities-table-improved td:nth-child(5) {
-                width: 15%;
-                min-width: 80px;
+                width: 10%;
+                min-width: 60px;
                 text-align: center;
             }
+            .logs-omset-section .activities-table-improved td:nth-child(6),
+            .logs-omset-section .activities-table-improved td:nth-child(7),
+            .logs-omset-section .activities-table-improved td:nth-child(8),
+            .logs-omset-section .activities-table-improved td:nth-child(9),
+            .logs-omset-section .activities-table-improved td:nth-child(10) {
+                 width: 8%;
+                 min-width: 50px;
+                 text-align: center;
+            }
             .logs-omset-section .activities-table-improved td:last-child {
-                width: 17%;
+                width: 10%;
                 min-width: 100px;
                 text-align: right;
             }
@@ -438,6 +545,13 @@ function formatRupiah($amount) {
                 font-weight: bold;
                 color: var(--text-secondary);
             }
+            .income-report-grid {
+                 grid-template-columns: 1fr;
+                 gap: var(--spacing-lg);
+            }
+            .income-card.total, .income-card.danger-total {
+                 max-width: 100% !important;
+            }
         }
     </style>
 </head>
@@ -452,7 +566,7 @@ function formatRupiah($amount) {
                     <span class="page-icon">📈</span>
                     Laporan Pemasukan
                 </h1>
-                <p>Ikhtisar total pemasukan dari penjualan paket makan minum.</p>
+                <p>Ikhtisar total pemasukan dari penjualan paket makan minum dan *share* Table/Room.</p>
                 <div class="page-actions" style="margin-top: var(--spacing-md);">
                     <a href="income-report.php?export=detailed_income" class="btn btn-info" target="_blank">
                         <span class="btn-icon">⬇️</span>
@@ -462,6 +576,41 @@ function formatRupiah($amount) {
             </div>
 
             <div class="income-report-grid">
+                <div class="income-card">
+                    <div class="icon" style="color: #60a5fa;">🍷</div>
+                    <h4>Total Revenue Paket Minum</h4>
+                    <p class="value" style="color: var(--info-color);"><?= formatRupiah($overall_total_income) ?></p>
+                    <p class="detail-text">Hanya dari data **sales_data**</p>
+                </div>
+                
+                <div class="income-card">
+                    <div class="icon" style="color: var(--primary-color);">💎</div>
+                    <h4>Total Share Elysium (T&R)</h4>
+                    <p class="value" style="color: var(--primary-color);"><?= formatRupiah($total_elysium_share) ?></p>
+                    <p class="detail-text">Dari Table & Room Sales (Profit Share 40%)</p>
+                </div>
+                
+                <div class="income-card total" style="border-left: 4px solid var(--primary-color);">
+                    <div class="icon" style="color: var(--primary-color);">💲</div>
+                    <h4>PEMASUKAN KOTOR (GROSS)</h4>
+                    <p class="value" style="color: var(--primary-color);"><?= formatRupiah($gross_income) ?></p>
+                    <p class="detail-text">Revenue Paket Minum + Share T&R</p>
+                </div>
+                
+                <div class="income-card danger-total" style="border-left: 4px solid var(--danger-color);">
+                    <div class="icon" style="color: var(--danger-color);">💸</div>
+                    <h4>PENGELUARAN GAJI</h4>
+                    <p class="value" style="color: var(--danger-color);">- <?= formatRupiah($total_payroll_expenditure) ?></p>
+                    <p class="detail-text">Total gaji karyawan *completed duty*</p>
+                </div>
+
+                <div class="income-card total" style="grid-column: 1 / -1; max-width: 50%; margin: 0 auto;">
+                    <div class="icon" style="color: var(--success-color);">✅</div>
+                    <h4>PEMASUKAN BERSIH (NET)</h4>
+                    <p class="value" style="color: var(--success-color);"><?= formatRupiah($net_income) ?></p>
+                    <p class="detail-text">Pemasukan Kotor - Pengeluaran Gaji</p>
+                </div>
+                
                 <div class="income-card">
                     <div class="icon" style="color: #60a5fa;">🍶</div>
                     <h4>Pemasukan Sake</h4>
@@ -510,17 +659,10 @@ function formatRupiah($amount) {
                     <p class="value"><?= formatRupiah($total_income_azul_2) ?></p>
                     <p class="detail-text"><?= $total_azul_2_packages ?> paket @ <?= formatRupiah($price_azul_2) ?></p>
                 </div>
-
-                <div class="income-card total" style="grid-column: 1 / -1; max-width: 50%; margin: 0 auto;">
-                    <div class="icon" style="color: var(--success-color);">💰</div>
-                    <h4>Total Pemasukan Keseluruhan</h4>
-                    <p class="value"><?= formatRupiah($overall_total_income) ?></p>
-                    <p class="detail-text">Gabungan dari semua penjualan paket</p>
-                </div>
             </div>
 
             <div class="chart-container">
-                <h3>Grafik Omset Mingguan</h3>
+                <h3>Grafik Omset Kotor Mingguan</h3>
                 <div class="chart-canvas-wrapper">
                     <canvas id="dailyRevenueChart"></canvas>
                 </div>
@@ -528,7 +670,7 @@ function formatRupiah($amount) {
 
             <div class="logs-omset-section">
                 <div class="card-header">
-                    <h3>Logs Omset Penjualan (Detail per Input)</h3>
+                    <h3>Logs Omset Kotor (Detail per Input)</h3>
                 </div>
                 <div class="card-content" style="padding-top: 0;">
                     <?php if (empty($omset_logs)): ?>
@@ -540,6 +682,7 @@ function formatRupiah($amount) {
                                     <tr>
                                         <th>Tanggal & Waktu</th>
                                         <th>Nama Anggota</th>
+                                        <th>Tipe Transaksi</th>
                                         <th>Sake</th>
                                         <th>Anggur Merah</th>
                                         <th>Tuak</th>
@@ -547,7 +690,7 @@ function formatRupiah($amount) {
                                         <th>Spicy 1</th>
                                         <th>Azul 1</th>
                                         <th>Azul 2</th>
-                                        <th>Omset Transaksi</th>
+                                        <th>Omset Kotor</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -555,6 +698,7 @@ function formatRupiah($amount) {
                                     <tr>
                                         <td data-label="Tanggal & Waktu"><?= $log['date_time'] ?></td>
                                         <td data-label="Nama Anggota" class="employee-name-cell"><?= htmlspecialchars($log['employee_name']) ?></td>
+                                        <td data-label="Tipe Transaksi"><?= htmlspecialchars($log['type_description']) ?></td>
                                         <td data-label="Sake"><?= $log['paket_sake'] ?></td>
                                         <td data-label="Anggur Merah"><?= $log['paket_anggur_merah'] ?></td>
                                         <td data-label="Tuak"><?= $log['paket_tuak'] ?></td>
@@ -587,7 +731,7 @@ function formatRupiah($amount) {
                 data: {
                     labels: chartLabels,
                     datasets: [{
-                        label: 'Omset Harian (Rp)',
+                        label: 'Omset Kotor Harian (Rp)',
                         data: chartDataRevenue,
                         backgroundColor: 'rgba(59, 130, 246, 0.6)',
                         borderColor: 'rgba(59, 130, 246, 1)',
@@ -603,7 +747,7 @@ function formatRupiah($amount) {
                             beginAtZero: true,
                             title: {
                                 display: true,
-                                text: 'Omset (Rp)'
+                                text: 'Omset Kotor (Rp)'
                             },
                             ticks: {
                                 callback: function(value, index, ticks) {
