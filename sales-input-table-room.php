@@ -710,31 +710,27 @@ if ($stmt_recent_sales) {
             vvip_room_angel_demon: { label: "VVIP ROOM & Angel", base: PRICES.vvip_room_angel_demon, included_packs: 2, has_angel: true },
             svip_room_angel_demon: { label: "SVIP ROOM & Angel", base: PRICES.svip_room_angel_demon, included_packs: 4, has_angel: true },
         };
+        
+        // --- REUSABLE ADDON TEMPLATE ---
+        const OPEN_TABLE_ANGEL_ADDON = `
+            <div class="add-on-item">
+                <label>1 Angel / Demon (15 Menit) - @${formatRupiah(PRICES.addon_angel_demon_15m)}</label>
+                <input type="number" id="addon_angel_demon_15m_input" name="addon_angel_demon_15m" min="0" value="0" data-is-angel="true" data-price-per-unit="${PRICES.addon_angel_demon_15m}">
+            </div>
+            <div class="info-message" style="margin-top: 10px;">
+                **Catatan:** Add-on ini akan mengaktifkan pembagian 60/40.
+            </div>
+        `;
+        // --- END REUSABLE ADDON TEMPLATE ---
 
         const ADDON_TEMPLATES = {
-            regular_table: `
-                <div class="info-message">
-                    Regular Table tidak memiliki add-on Angel/Demon.
-                </div>
-            `,
-            vip_table: `
-                <div class="add-on-item">
-                    <label>1 Angel / Demon (15 Menit) - @${formatRupiah(PRICES.addon_angel_demon_15m)}</label>
-                    <input type="number" id="addon_angel_demon_15m_input" name="addon_angel_demon_15m" min="0" value="0" data-is-angel="true" data-price-per-unit="${PRICES.addon_angel_demon_15m}">
-                </div>
-                <div class="info-message" style="margin-top: 10px;">
-                    **Catatan:** Add-on ini akan mengaktifkan pembagian 60/40.
-                </div>
-            `,
-            vvip_table: `
-                <div class="add-on-item">
-                    <label>1 Angel / Demon (15 Menit) - @${formatRupiah(PRICES.addon_angel_demon_15m)}</label>
-                    <input type="number" id="addon_angel_demon_15m_input" name="addon_angel_demon_15m" min="0" value="0" data-is-angel="true" data-price-per-unit="${PRICES.addon_angel_demon_15m}">
-                </div>
-                 <div class="info-message" style="margin-top: 10px;">
-                    **Catatan:** Add-on ini akan mengaktifkan pembagian 60/40.
-                </div>
-            `,
+            // Updated to allow Angel/Demon Add-on on Regular Table
+            regular_table: OPEN_TABLE_ANGEL_ADDON,
+            
+            vip_table: OPEN_TABLE_ANGEL_ADDON,
+            
+            vvip_table: OPEN_TABLE_ANGEL_ADDON,
+
             vvip_room_only: `
                 <div class="add-on-item">
                     <label>Extra Guest: @${formatRupiah(PRICES.addon_vvip_extra_guest)} / Org (Max 3 Guest)</label>
@@ -819,7 +815,7 @@ if ($stmt_recent_sales) {
                 if (addonContent.innerHTML !== '') {
                     const form = document.getElementById('sales-calculator-form');
                     
-                    // a. Add-on Angel/Demon (VIP/VVIP Table - 400k)
+                    // a. Add-on Angel/Demon (Open Table - now includes Regular)
                     const openTableAngelInput = addonContent.querySelector('input[name="addon_angel_demon_15m"]');
                     if (openTableAngelInput) {
                         const angelDemonQty = parseInt(openTableAngelInput.value) || 0;
@@ -1042,7 +1038,7 @@ if ($stmt_recent_sales) {
                 }
             });
         }
-        
+
         document.addEventListener('DOMContentLoaded', initEventListeners);
     </script>
 </body>

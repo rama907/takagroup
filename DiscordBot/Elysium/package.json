@@ -1,0 +1,14 @@
+{
+  "name": "elysium-duty-bot",
+  "version": "1.0.0",
+  "description": "Discord bot for Elysium Clock In/Out via API.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.x.x",
+    "axios": "^1.x.x",
+    "dotenv": "^16.x.x"
+  }
+}
