@@ -253,6 +253,10 @@ if (isset($conn) && isLoggedIn()) {
             <span class="nav-icon">⏱️</span>
             <span class="nav-text">Manajemen Jam Duty</span>
         </a>
+        <a href="weekly-salary-recap.php" class="nav-item <?= basename($_SERVER['PHP_SELF']) == 'weekly-salary-recap.php' ? 'active' : '' ?>">
+            <span class="nav-icon">📘</span>
+            <span class="nav-text">Backup Gaji Mingguan</span>
+        </a>
         <?php endif; ?>
     </div>
 </nav>

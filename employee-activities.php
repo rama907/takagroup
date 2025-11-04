@@ -50,8 +50,8 @@ $stmt = $conn->query("
         COALESCE(sales_summary.paket_tuak, 0) as paket_tuak,
         COALESCE(sales_summary.paket_soju, 0) as paket_soju,
         COALESCE(sales_summary.paket_spicy_1, 0) as paket_spicy_1,
-        COALESCE(sales_summary.paket_spicy_2, 0) as paket_azul_1,  /* ALIAS: Spicy 2 -> Azul 1 */
-        COALESCE(sales_summary.paket_spicy_3, 0) as paket_azul_2   /* ALIAS: Spicy 3 -> Azul 2 */
+        COALESCE(sales_summary.paket_spicy_2, 0) as paket_azul_1,  /* Alias untuk display */
+        COALESCE(sales_summary.paket_spicy_3, 0) as paket_azul_2   /* Alias untuk display */
     FROM employees e
     LEFT JOIN (
         SELECT
@@ -69,8 +69,8 @@ $stmt = $conn->query("
             SUM(paket_tuak) as paket_tuak,
             SUM(paket_soju) as paket_soju,
             SUM(paket_spicy_1) as paket_spicy_1,
-            SUM(paket_spicy_2) as paket_spicy_2, /* Column name remains paket_spicy_2 */
-            SUM(paket_spicy_3) as paket_spicy_3  /* Column name remains paket_spicy_3 */
+            SUM(paket_spicy_2) as paket_spicy_2, /* Column name remains paket_spicy_2 (Azul 1) */
+            SUM(paket_spicy_3) as paket_spicy_3  /* Column name remains paket_spicy_3 (Azul 2) */
         FROM sales_data
         GROUP BY employee_id
     ) as sales_summary ON e.id = sales_summary.employee_id
@@ -103,33 +103,31 @@ $total_anggur_merah = array_sum(array_column($employee_activities, 'paket_anggur
 $total_tuak = array_sum(array_column($employee_activities, 'paket_tuak'));
 $total_soju = array_sum(array_column($employee_activities, 'paket_soju'));
 $total_spicy_1 = array_sum(array_column($employee_activities, 'paket_spicy_1'));
-$total_azul_1 = array_sum(array_column($employee_activities, 'paket_azul_1'));
-$total_azul_2 = array_sum(array_column($employee_activities, 'paket_azul_2'));
+$total_azul_1 = array_sum(array_column($employee_activities, 'paket_azul_1')); // Menggunakan alias
+$total_azul_2 = array_sum(array_column($employee_activities, 'paket_azul_2')); // Menggunakan alias
 
 $total_penjualan_paketan = $total_sake + $total_anggur_merah + $total_tuak + $total_soju + $total_spicy_1 + $total_azul_1 + $total_azul_2;
-
-// Ruangan Dihapus dari perhitungan total
-$total_penjualan_ruangan = 0; 
 
 // Total Keseluruhan (Hanya Paketan)
 $total_paket_terjual_keseluruhan = $total_penjualan_paketan;
 
-// === START EXPORT LOGIC ===
+// === START EXPORT LOGIC (Diperbaiki) ===
 if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
-    $export_stmt = $conn->query("
+    $export_stmt_sql = "
         SELECT
             e.id,
             e.name,
             e.role,
             e.is_on_duty,
             COALESCE(duty_summary.total_duty_minutes, 0) as total_duty_minutes,
+            -- Menggunakan nama kolom ASLI dari sales_data di subquery
             COALESCE(sales_summary.paket_sake, 0) as paket_sake,
             COALESCE(sales_summary.paket_anggur_merah, 0) as paket_anggur_merah,
             COALESCE(sales_summary.paket_tuak, 0) as paket_tuak,
             COALESCE(sales_summary.paket_soju, 0) as paket_soju,
             COALESCE(sales_summary.paket_spicy_1, 0) as paket_spicy_1,
-            COALESCE(sales_summary.paket_spicy_2, 0) as paket_azul_1,
-            COALESCE(sales_summary.paket_spicy_3, 0) as paket_azul_2
+            COALESCE(sales_summary.paket_spicy_2, 0) as paket_azul_1, /* Menggunakan alias 'paket_azul_1' */
+            COALESCE(sales_summary.paket_spicy_3, 0) as paket_azul_2  /* Menggunakan alias 'paket_azul_2' */
         FROM employees e
         LEFT JOIN (
             SELECT
@@ -147,8 +145,8 @@ if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
                 SUM(paket_tuak) as paket_tuak,
                 SUM(paket_soju) as paket_soju,
                 SUM(paket_spicy_1) as paket_spicy_1,
-                SUM(paket_spicy_2) as paket_azul_1,
-                SUM(paket_spicy_3) as paket_azul_2
+                SUM(paket_spicy_2) as paket_spicy_2, /* MENGGUNAKAN NAMA KOLOM ASLI DATABASE */
+                SUM(paket_spicy_3) as paket_spicy_3  /* MENGGUNAKAN NAMA KOLOM ASLI DATABASE */
             FROM sales_data
             GROUP BY employee_id
         ) as sales_summary ON e.id = sales_summary.employee_id
@@ -166,9 +164,12 @@ if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
                 WHEN 'magang' THEN 9
             END,
             e.name
-    ");
+    ";
+
+    $export_stmt = $conn->query($export_stmt_sql);
     if ($export_stmt === false) {
-        die("Gagal menjalankan query ekspor: " . $conn->error);
+        // Ini adalah pengecekan yang Anda lihat saat error
+        die("Gagal menjalankan query ekspor: " . $conn->error); 
     }
     $export_data = $export_stmt->fetch_all(MYSQLI_ASSOC);
     $export_stmt->close();
@@ -182,10 +183,10 @@ if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
 
     $output = fopen('php://output', 'w');
 
-    // Tambahkan UTF-8 BOM untuk kompatibilitas Excel (penting untuk karakter non-ASCII)
+    // Tambahkan UTF-8 BOM untuk kompatibilitas Excel
     fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
 
-    // Definisikan CSV headers (ramah pengguna)
+    // Definisikan CSV headers (nama Azul yang baru)
     $headers = [
         'Nama',
         'Jabatan',
@@ -196,15 +197,15 @@ if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
         'Tuak',
         'Soju',
         'Spicy 1', 
-        'Azul 1',
-        'Azul 2',
+        'Azul 1', // Header yang benar
+        'Azul 2', // Header yang benar
     ];
     fputcsv($output, $headers);
 
     // Tulis baris data
     foreach ($export_data as $row) {
         $data_row = [
-            htmlspecialchars_decode($row['name']), // Dekode entitas HTML jika ada
+            htmlspecialchars_decode($row['name']), 
             getRoleDisplayName($row['role']),
             $row['is_on_duty'] ? 'On Duty' : 'Off Duty',
             formatDuration($row['total_duty_minutes']),
@@ -213,14 +214,14 @@ if (isset($_GET['export']) && $_GET['export'] == 'spreadsheet') {
             $row['paket_tuak'],
             $row['paket_soju'],
             $row['paket_spicy_1'], 
-            $row['paket_azul_1'], 
-            $row['paket_azul_2'], 
+            $row['paket_azul_1'], // Menggunakan alias yang benar
+            $row['paket_azul_2'], // Menggunakan alias yang benar
         ];
         fputcsv($output, $data_row);
     }
 
     fclose($output);
-    exit; // Hentikan eksekusi lebih lanjut setelah mengirim file
+    exit;
 }
 // === AKHIR LOGIKA EKSPOR ===
 ?>
