@@ -217,9 +217,17 @@ if (isset($conn) && isLoggedIn()) {
             <span class="nav-icon">💸</span>
             <span class="nav-text">Rekap Gaji</span>
         </a>
+        <a href="talent-payroll-recap-weekly.php" class="nav-item <?= basename($_SERVER['PHP_SELF']) == 'talent-payroll-recap-weekly.php' ? 'active' : '' ?>">
+            <span class="nav-icon">🧾</span>
+            <span class="nav-text">Rekap Gaji Talent</span>
+        </a>
         <a href="attendance-recap.php" class="nav-item <?= basename($_SERVER['PHP_SELF']) == 'attendance-recap.php' ? 'active' : '' ?>">
             <span class="nav-icon">📅</span>
             <span class="nav-text">Rekap Absensi</span>
+        </a>
+        <a href="talent-management.php" class="nav-item <?= basename($_SERVER['PHP_SELF']) == 'talent-management.php' ? 'active' : '' ?>">
+            <span class="nav-icon">🎭</span>
+            <span class="nav-text">Manajemen Talent</span>
         </a>
         <a href="warning-management.php" class="nav-item <?= basename($_SERVER['PHP_SELF']) == 'warning-management.php' ? 'active' : '' ?>">
             <span class="nav-icon">⚠️</span>

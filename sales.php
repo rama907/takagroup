@@ -138,19 +138,18 @@ if (($_SERVER['REQUEST_METHOD'] === 'POST') && (isset($_POST['action']) && $_POS
     
     $error_message = null; 
 
-    if (empty($date_input) && !$error_message) { 
-        $error_message = "Tanggal harus diisi!";
-    }
-
+    // --- LOGIKA VALIDASI TANGGAL ---
     $date_obj = null;
     $formatted_date = null;
-
+    if (empty($date_input)) { 
+        $error_message = "Tanggal harus diisi!";
+    }
+    
     if (!isset($error_message)) {
         $date_obj = DateTime::createFromFormat('Y-m-d', $date_input);
         $errors = DateTime::getLastErrors();
         
         if (!$date_obj || $errors['warning_count'] > 0 || $errors['error_count'] > 0) {
-            DateTime::getLastErrors(); 
             $date_obj = DateTime::createFromFormat('d/m/Y', $date_input);
             $errors = DateTime::getLastErrors();
         }
@@ -159,23 +158,19 @@ if (($_SERVER['REQUEST_METHOD'] === 'POST') && (isset($_POST['action']) && $_POS
             $error_message = "Format tanggal tidak valid! Harap gunakan format YYYY-MM-DD (misal: 2025-07-24) atau DD/MM/YYYY (misal: 24/07/2025) yang lengkap dan akurat.";
         }
         
-        if (!$error_message) {
+        if (!isset($error_message)) {
             $formatted_date = $date_obj->format('Y-m-d');
 
             $today_limit = new DateTime();
             $today_limit->setTime(23, 59, 59);
-
-            if ($date_obj > $today_limit) {
-                $error_message = "Tanggal tidak boleh di masa depan!";
-            }
+            
+            if ($date_obj > $today_limit) { $error_message = "Tanggal tidak boleh di masa depan!"; }
             
             $thirty_days_ago = new DateTime();
             $thirty_days_ago->sub(new DateInterval('P30D'));
             $thirty_days_ago->setTime(0, 0, 0);
             
-            if ($date_obj < $thirty_days_ago) {
-                $error_message = "Tanggal tidak boleh lebih dari 30 hari yang lalu!";
-            }
+            if ($date_obj < $thirty_days_ago) { $error_message = "Tanggal tidak boleh lebih dari 30 hari yang lalu!"; }
         }
     }
 
@@ -188,7 +183,10 @@ if (($_SERVER['REQUEST_METHOD'] === 'POST') && (isset($_POST['action']) && $_POS
     $year = (int)$date_obj->format('Y');
     $input_time = date('Y-m-d H:i:s'); 
     
+    // --- START ATOMIC TRANSACTION ---
+    $conn->begin_transaction();
     try {
+        // --- 1. INSERT INTO sales_data ---
         $stmt = $conn->prepare("
             INSERT INTO sales_data (
                 employee_id, date, input_time, week_number, year, 
@@ -198,6 +196,10 @@ if (($_SERVER['REQUEST_METHOD'] === 'POST') && (isset($_POST['action']) && $_POS
             )
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
+        
+        if (!$stmt) {
+             throw new Exception("Gagal menyiapkan query insert sales: " . $conn->error);
+        }
         
         $stmt->bind_param("isssiiiiiiiiii", 
             $employee_id_from_form, 
@@ -210,47 +212,128 @@ if (($_SERVER['REQUEST_METHOD'] === 'POST') && (isset($_POST['action']) && $_POS
             $paket_tuak,
             $paket_soju,
             $paket_spicy_1,
-            $paket_azul_1, // Bind Azul 1 ke kolom paket_spicy_2
-            $paket_azul_2, // Bind Azul 2 ke kolom paket_spicy_3
+            $paket_azul_1, 
+            $paket_azul_2, 
             $paket_vip_person,
             $paket_special_30min
         );
         
-        $result = $stmt->execute();
-        
-        if (!$result) {
-            $error_message = "Gagal menyimpan data: " . $stmt->error;
-            header("Location: sales.php?msg=" . urlencode($error_message) . "&type=error" . "&employee_id=" . $employee_id_to_submit);
-            exit;
-        } else {
-            $success_message = "Data penjualan berhasil disimpan untuk tanggal " . date('d/m/Y', strtotime($formatted_date)) . " pada jam " . date('H:i', strtotime($input_time)) . "!";
-            sendDiscordNotification([
-                'employee_name' => getEmployeeNameById($employee_id_from_form),
-                'date' => $formatted_date,
-                'input_time' => $input_time,
-                'paket_sake' => $paket_sake,
-                'paket_anggur_merah' => $paket_anggur_merah,
-                'paket_tuak' => $paket_tuak,
-                'paket_soju' => $paket_soju,
-                'paket_spicy_1' => $paket_spicy_1,
-                'paket_azul_1' => $paket_azul_1,
-                'paket_azul_2' => $paket_azul_2,
-                'paket_vip_person' => $paket_vip_person,
-                'paket_special_30min' => $paket_special_30min
-            ], 'sale_input');
-            
-            header("Location: " . $_SERVER['PHP_SELF'] . "?msg=" . urlencode($success_message) . "&type=success" . "&employee_id=" . $employee_id_to_submit);
-            exit;
+        if (!$stmt->execute()) {
+            throw new Exception("Gagal menyimpan data penjualan: " . $stmt->error);
         }
+        $stmt->close();
+        
+        // --- 2. AUTOMATIC STOCK WITHDRAWAL (KULKAS) ---
+        // Pemetaan: [stock_name] => ['qty_per_pack', sold_qty]
+        // Kritis: Menggunakan nama yang SENSITIF HURUF BESAR/KECIL dan SPASI
+        $withdrawal_map = [
+            'sake' => ['Sake', 10, $paket_sake], // Diubah menjadi 'Sake'
+            'anggur_merah' => ['Anggur Merah', 10, $paket_anggur_merah], // Diubah menjadi 'Anggur Merah'
+            'tuak' => ['Tuak', 10, $paket_tuak], // Diubah menjadi 'Tuak'
+            'soju' => ['Soju', 10, $paket_soju], // Diubah menjadi 'Soju'
+            // Spicy 1, Azul 1, dan Azul 2 DIKECUALIKAN DARI PEMOTONGAN OTOMATIS
+        ];
+
+        $total_items_withdrawn = 0;
+        $withdrawn_products = [];
+        
+        foreach ($withdrawal_map as $product_key => $details) {
+            list($stock_name, $qty_per_pack, $sold_qty) = $details;
+            $qty_to_withdraw = $sold_qty * $qty_per_pack;
+            
+            if ($qty_to_withdraw > 0) {
+                // a. Update stock (decrement) & Check sufficiency in one query
+                $stmt_update_stock = $conn->prepare("
+                    UPDATE refrigerator_stock 
+                    SET quantity = quantity - ? 
+                    WHERE product_name = ? AND quantity >= ?
+                ");
+                if (!$stmt_update_stock) { 
+                    throw new Exception("Gagal menyiapkan query update stok: " . $conn->error); 
+                }
+                
+                $stmt_update_stock->bind_param("isi", $qty_to_withdraw, $stock_name, $qty_to_withdraw);
+                $stmt_update_stock->execute();
+                
+                // If the stock update didn't affect rows, check why (insufficient stock)
+                if ($stmt_update_stock->affected_rows === 0) {
+                    // Mengambil stok saat ini secara eksplisit untuk pesan error yang akurat
+                    $stmt_check_current = $conn->prepare("SELECT quantity FROM refrigerator_stock WHERE product_name = ?");
+                    if (!$stmt_check_current) {
+                        throw new Exception("Gagal menyiapkan query cek stok saat ini: " . $conn->error);
+                    }
+                    $stmt_check_current->bind_param("s", $stock_name);
+                    $stmt_check_current->execute();
+                    $current_qty = $stmt_check_current->get_result()->fetch_assoc()['quantity'] ?? 0;
+                    $stmt_check_current->close();
+                    
+                    if ($current_qty < $qty_to_withdraw) {
+                         // Rollback semua transaksi karena stok tidak cukup
+                         throw new Exception("Stok kulkas **" . str_replace('_', ' ', $stock_name) . "** tidak mencukupi! (Stok saat ini: {$current_qty}, Butuh: {$qty_to_withdraw}). Transaksi dibatalkan.");
+                    }
+                    // Jika affected_rows 0 tapi quantity cukup, berarti product_name tidak ditemukan di refrigerator_stock, which is also an error.
+                    throw new Exception("Produk **" . str_replace('_', ' ', $stock_name) . "** tidak ditemukan di database stok kulkas. Transaksi dibatalkan. (Nama DB yang dicari: '{$stock_name}')");
+                }
+                $stmt_update_stock->close();
+
+                // b. Log the transaction in refrigerator_transactions (mencatat employee_id yang input sales)
+                $transaction_type = 'withdraw';
+                $stmt_log_trans = $conn->prepare("
+                    INSERT INTO refrigerator_transactions (product_name, employee_id, transaction_type, quantity) 
+                    VALUES (?, ?, ?, ?)
+                ");
+                if (!$stmt_log_trans) { 
+                    throw new Exception("Gagal menyiapkan query log transaksi: " . $conn->error); 
+                }
+                
+                $stmt_log_trans->bind_param("sisi", $stock_name, $employee_id_from_form, $transaction_type, $qty_to_withdraw);
+                if (!$stmt_log_trans->execute()) {
+                    throw new Exception("Gagal menyimpan log transaksi stok: " . $stmt_log_trans->error);
+                }
+                $stmt_log_trans->close();
+                
+                $total_items_withdrawn += 1;
+                $withdrawn_products[$stock_name] = $qty_to_withdraw;
+            }
+        }
+        
+        $conn->commit(); // Commit both sales and stock updates
+        
+        $success_message = "Data penjualan berhasil disimpan untuk tanggal " . date('d/m/Y', strtotime($formatted_date)) . " pada jam " . date('H:i', strtotime($input_time)) . "!";
+        
+        // Kirim notifikasi Discord untuk sales (logika asli)
+        sendDiscordNotification([
+            'employee_name' => getEmployeeNameById($employee_id_from_form),
+            'date' => $formatted_date,
+            'input_time' => $input_time,
+            'paket_sake' => $paket_sake,
+            'paket_anggur_merah' => $paket_anggur_merah,
+            'paket_tuak' => $paket_tuak,
+            'paket_soju' => $paket_soju,
+            'paket_spicy_1' => $paket_spicy_1,
+            'paket_azul_1' => $paket_azul_1,
+            'paket_azul_2' => $paket_azul_2,
+            'paket_vip_person' => $paket_vip_person,
+            'paket_special_30min' => $paket_special_30min
+        ], 'sale_input');
+        
+        // Kirim notifikasi Discord untuk penarikan stok (BARU)
+        if ($total_items_withdrawn > 0) {
+             sendDiscordNotification([
+                'employee_name' => getEmployeeNameById($employee_id_from_form),
+                'product_list' => $withdrawn_products, 
+            ], "refrigerator_withdraw");
+        }
+        
+        header("Location: " . $_SERVER['PHP_SELF'] . "?msg=" . urlencode($success_message) . "&type=success" . "&employee_id=" . $employee_id_to_submit);
+        exit;
+
     } catch (Exception $e) {
+        $conn->rollback();
         $error_message = "Error database: " . $e->getMessage();
         header("Location: sales.php?msg=" . urlencode($error_message) . "&type=error" . "&employee_id=" . $employee_id_to_submit);
         exit;
-    } finally {
-        if (isset($stmt)) {
-            $stmt->close(); 
-        }
-    }
+    } 
 }
 
 // Query untuk Ringkasan Input Penjualan (menyeluruh)
@@ -493,6 +576,8 @@ $stmt->close();
                     
                     <div class="info-message" style="margin-bottom: var(--spacing-xl);">
                         <strong>Penting:</strong> Jumlah yang dimasukkan adalah **jumlah paket/satuan layanan yang terjual**, BUKAN jumlah item/botol yang dikeluarkan dari stok.
+                        <br>
+                        <strong>Penarikan Stok Otomatis:</strong> Hanya **Sake, Anggur Merah, Tuak, dan Soju** yang akan mengurangi stok kulkas Anda. Pastikan stok kulkas **cukup** sebelum input penjualan!
                     </div>
                     
                     <form method="POST" class="sales-form" id="sales-form">
@@ -537,7 +622,7 @@ $stmt->close();
                             
                             <div class="product-card">
                                 <label for="paket_sake">SAKE</label>
-                                <p>$20,000.00</p>
+                                <p>$20,000.00 (Potong Stok: 10 Sake)</p>
                                 <div class="quantity-group">
                                     <label for="paket_sake">Paket</label>
                                     <input type="number" name="paket_sake" id="paket_sake" value="0" min="0">
@@ -545,7 +630,7 @@ $stmt->close();
                             </div>
                             <div class="product-card">
                                 <label for="paket_anggur_merah">ANGGUR MERAH</label>
-                                <p>$20,000.00</p>
+                                <p>$20,000.00 (Potong Stok: 10 Anggur Merah)</p>
                                 <div class="quantity-group">
                                     <label for="paket_anggur_merah">Paket</label>
                                     <input type="number" name="paket_anggur_merah" id="paket_anggur_merah" value="0" min="0">
@@ -553,7 +638,7 @@ $stmt->close();
                             </div>
                             <div class="product-card">
                                 <label for="paket_tuak">TUAK</label>
-                                <p>$20,000.00</p>
+                                <p>$20,000.00 (Potong Stok: 10 Tuak)</p>
                                 <div class="quantity-group">
                                     <label for="paket_tuak">Paket</label>
                                     <input type="number" name="paket_tuak" id="paket_tuak" value="0" min="0">
@@ -561,7 +646,7 @@ $stmt->close();
                             </div>
                             <div class="product-card">
                                 <label for="paket_soju">SOJU</label>
-                                <p>$20,000.00</p>
+                                <p>$20,000.00 (Potong Stok: 10 Soju)</p>
                                 <div class="quantity-group">
                                     <label for="paket_soju">Paket</label>
                                     <input type="number" name="paket_soju" id="paket_soju" value="0" min="0">
@@ -571,7 +656,7 @@ $stmt->close();
                             <?php if ($is_director_level): ?>
                             <div class="product-card product-card-spicy">
                                 <label for="paket_spicy_1">SPICY 1</label>
-                                <p>$65,000.00</p>
+                                <p>$65,000.00 (TIDAK ADA Pemotongan Stok Otomatis)</p>
                                 <div class="quantity-group">
                                     <label for="paket_spicy_1">Paket</label>
                                     <input type="number" name="paket_spicy_1" id="paket_spicy_1" value="0" min="0">
@@ -579,7 +664,7 @@ $stmt->close();
                             </div>
                             <div class="product-card product-card-azul">
                                 <label for="paket_azul_1">AZUL 1</label>
-                                <p>$25,000.00</p>
+                                <p>$25,000.00 (TIDAK ADA Pemotongan Stok Otomatis)</p>
                                 <div class="quantity-group">
                                     <label for="paket_azul_1">Paket</label>
                                     <input type="number" name="paket_azul_1" id="paket_azul_1" value="0" min="0">
@@ -587,7 +672,7 @@ $stmt->close();
                             </div>
                             <div class="product-card product-card-azul">
                                 <label for="paket_azul_2">AZUL 2</label>
-                                <p>$20,000.00</p>
+                                <p>$20,000.00 (TIDAK ADA Pemotongan Stok Otomatis)</p>
                                 <div class="quantity-group">
                                     <label for="paket_azul_2">Paket</label>
                                     <input type="number" name="paket_azul_2" id="paket_azul_2" value="0" min="0">
@@ -720,7 +805,19 @@ $stmt->close();
                     second: '2-digit'
                 });
                 
-                if (!confirm(`Yakin ingin menyimpan data penjualan pada jam ${timeString}?`)) {
+                // Minimal check to prevent empty form submission
+                let totalItems = 0;
+                document.querySelectorAll('.quantity-group input[type="number"]').forEach(input => {
+                    totalItems += parseInt(input.value) || 0;
+                });
+
+                if (totalItems === 0) {
+                    e.preventDefault();
+                    alert('❌ Harap masukkan minimal satu item penjualan.');
+                    return false;
+                }
+
+                if (!confirm(`Yakin ingin menyimpan data penjualan pada jam ${timeString}?\nStok kulkas akan dikurangi secara otomatis.`)) {
                     e.preventDefault();
                     return false;
                 }

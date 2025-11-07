@@ -146,6 +146,48 @@ function getPendingRequestCount() {
     return $counts['total'];
 }
 
+// Fungsi untuk memeriksa apakah seorang karyawan adalah Talent
+function isTalent($employeeId) {
+    global $conn;
+    if (!$employeeId) return false;
+    
+    $stmt = $conn->prepare("SELECT is_talent FROM talent_assignments WHERE employee_id = ? AND is_talent = TRUE");
+    if (!$stmt) return false;
+    $stmt->bind_param("i", $employeeId);
+    $stmt->execute();
+    $result = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    return (bool)$result;
+}
+
+// Fungsi untuk mendapatkan daftar semua Talent aktif
+function getAllActiveTalents() {
+    global $conn;
+    $query = "
+        SELECT e.id, e.name
+        FROM employees e
+        JOIN talent_assignments ta ON e.id = ta.employee_id
+        WHERE e.status = 'active' AND ta.is_talent = TRUE
+        ORDER BY e.name ASC
+    ";
+    $result = $conn->query($query);
+    return $result ? $result->fetch_all(MYSQLI_ASSOC) : [];
+}
+
+// Fungsi untuk mendapatkan total share talent yang terakumulasi
+// Catatan: Menggunakan Nama (String) karena kolom talent_name di sales_table_room adalah Nama Talent.
+function getTotalTalentShare($talentName, $statusFilter = 'Pending') {
+    global $conn;
+    // Menggunakan kolom talent_share_status untuk filter
+    $stmt = $conn->prepare("SELECT COALESCE(SUM(talent_share), 0) as total_share FROM sales_table_room WHERE talent_name = ? AND talent_share_status = ?");
+    if (!$stmt) return 0;
+    $stmt->bind_param("ss", $talentName, $statusFilter);
+    $stmt->execute();
+    $result = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    return (int)($result['total_share'] ?? 0);
+}
+
 // Fungsi untuk mengirim notifikasi ke Discord
 function sendDiscordNotification($data, $type = 'info') {
     // --- 1. Konfigurasi Webhook & Bot Khusus ---

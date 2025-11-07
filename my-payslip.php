@@ -16,8 +16,6 @@ $payslip_url = 'generate-payslip.php?employee_id=' . $user['id'];
 
 /**
  * Membulatkan total menit duty ke jam terdekat.
- * 2 jam 29 menit -> 2 jam.
- * 2 jam 30 menit -> 3 jam.
  */
 function roundToNearestHour($minutes) {
     return round($minutes / 60);
@@ -40,7 +38,6 @@ $hourly_rates = [
 // Konstanta perhitungan (dalam jam)
 $MIN_DUTY_FULL_PAY_HOURS = 10;
 $MIN_DUTY_40_CUT_HOURS = 8;
-$MIN_DUTY_50_CUT_HOURS = 0; // Sebenarnya sudah dicakup oleh MIN_DUTY_40_CUT_HOURS
 // --- END NEW SALARY LOGIC AND CONSTANTS ---
 
 
@@ -48,15 +45,7 @@ $MIN_DUTY_50_CUT_HOURS = 0; // Sebenarnya sudah dicakup oleh MIN_DUTY_40_CUT_HOU
 $stmt = $conn->prepare("
     SELECT e.id, e.name, e.role, e.is_paid,
            COALESCE(duty_summary.total_duty_minutes, 0) as total_duty_minutes,
-           COALESCE(sales_summary.paket_sake, 0) as paket_sake,
-           COALESCE(sales_summary.paket_anggur_merah, 0) as paket_anggur_merah,
-           COALESCE(sales_summary.paket_tuak, 0) as paket_tuak,
-           COALESCE(sales_summary.paket_soju, 0) as paket_soju,
-           COALESCE(sales_summary.paket_spicy_1, 0) as paket_spicy_1,
-           COALESCE(sales_summary.paket_spicy_2, 0) as paket_spicy_2,
-           COALESCE(sales_summary.paket_spicy_3, 0) as paket_spicy_3,
-           COALESCE(sales_summary.paket_vip_person, 0) as paket_vip_person, /* NEW */
-           COALESCE(sales_summary.paket_special_30min, 0) as paket_special_30min /* NEW */
+           COALESCE(sales_summary.total_sales, 0) as total_sales
     FROM employees e
     LEFT JOIN (
         SELECT
@@ -69,15 +58,9 @@ $stmt = $conn->prepare("
     LEFT JOIN (
         SELECT
             employee_id,
-            SUM(paket_sake) as paket_sake,
-            SUM(paket_anggur_merah) as paket_anggur_merah,
-            SUM(paket_tuak) as paket_tuak,
-            SUM(paket_soju) as paket_soju,
-            SUM(paket_spicy_1) as paket_spicy_1,
-            SUM(paket_spicy_2) as paket_spicy_2,
-            SUM(paket_spicy_3) as paket_spicy_3,
-            SUM(paket_vip_person) as paket_vip_person,
-            SUM(paket_special_30min) as paket_special_30min
+            SUM(paket_sake) + SUM(paket_anggur_merah) + SUM(paket_tuak) + SUM(paket_soju) +
+            SUM(paket_spicy_1) + SUM(paket_spicy_2) + SUM(paket_spicy_3) +
+            SUM(paket_vip_person) + SUM(paket_special_30min) AS total_sales
         FROM sales_data
         GROUP BY employee_id
     ) as sales_summary ON e.id = sales_summary.employee_id
@@ -99,30 +82,18 @@ if (!$employee_data_summary) {
         'role' => $user['role'],
         'is_paid' => false,
         'total_duty_minutes' => 0,
-        'paket_sake' => 0,
-        'paket_anggur_merah' => 0,
-        'paket_tuak' => 0,
-        'paket_soju' => 0,
-        'paket_spicy_1' => 0,
-        'paket_spicy_2' => 0,
-        'paket_spicy_3' => 0,
-        'paket_vip_person' => 0,
-        'paket_special_30min' => 0,
+        'total_sales' => 0,
     ];
 }
 
 $employee_role_summary = $employee_data_summary['role'];
 $is_paid_status = (bool)($employee_data_summary['is_paid'] ?? false); 
 $total_duty_minutes_summary = $employee_data_summary['total_duty_minutes'];
-$total_penjualan_paket_summary = ($employee_data_summary['paket_sake'] ?? 0) + 
-                                 ($employee_data_summary['paket_anggur_merah'] ?? 0) + 
-                                 ($employee_data_summary['paket_tuak'] ?? 0) + 
-                                 ($employee_data_summary['paket_soju'] ?? 0) + 
-                                 ($employee_data_summary['paket_spicy_1'] ?? 0) + 
-                                 ($employee_data_summary['paket_spicy_2'] ?? 0) + 
-                                 ($employee_data_summary['paket_spicy_3'] ?? 0) +
-                                 ($employee_data_summary['paket_vip_person'] ?? 0) +
-                                 ($employee_data_summary['paket_special_30min'] ?? 0);
+$total_penjualan_paket_summary = $employee_data_summary['total_sales'];
+                                 
+$is_current_talent = isTalent($user['id']);
+// MENGAMBIL TOTAL SHARE HANYA YANG BERSTATUS 'Pending'
+$talent_share_accumulated = $is_current_talent ? getTotalTalentShare($user['name'], 'Pending') : 0; 
 
 $gaji_pokok_base_summary = 0; 
 $total_gajian_summary = 0; 
@@ -130,12 +101,17 @@ $is_cut = false;
 $cut_percentage_display = 0;
 
 
-// --- LOGIKA PERHITUNGAN GAJI BARU (Diulangi di sini untuk Ringkasan) ---
+// --- LOGIKA PERHITUNGAN GAJI BARU ---
 
 // 1. Hitung Jam Kerja yang Dibulatkan
 $rounded_duty_hours = roundToNearestHour($total_duty_minutes_summary);
 
-if (isset($hourly_rates[$employee_role_summary])) {
+if ($is_current_talent) {
+    // LOGIKA GAJI KHUSUS TALENT: Hanya hitung share yang belum dibayar
+    $gaji_pokok_base_summary = 0;
+    $total_gajian_summary = $talent_share_accumulated; // Hanya yang Pending
+} elseif (isset($hourly_rates[$employee_role_summary])) {
+    // LOGIKA GAJI ANGGOTA NON-TALENT (LAMA)
     $hourly_rate = $hourly_rates[$employee_role_summary];
 
     // Gaji Pokok (Base Pay) berdasarkan jam yang dibulatkan
@@ -143,7 +119,6 @@ if (isset($hourly_rates[$employee_role_summary])) {
 
     // 1. Peran Khusus (Chef)
     if (in_array($employee_role_summary, ['chef'])) {
-        $gaji_pokok_summary = 0;
         $total_gajian_summary = 0;
     }
     // 2. Peran Senior (CEO, Direktur, Wakil Direktur)
@@ -302,7 +277,11 @@ function formatDurationDisplay($minutes) {
                 <p>Lihat dan unduh slip gaji pribadi Anda.</p>
             </div>
 
-            <?php if (in_array($employee_role_summary, ['chef'])): ?>
+            <?php if ($is_current_talent): ?>
+                <div class="info-message">
+                    <strong>Penting:</strong> Anda adalah Talent. Gaji Anda dihitung berdasarkan **akumulasi Profit Share yang BELUM DIBAYAR** (<?= formatRupiah($talent_share_accumulated) ?>) dari penjualan Table & Room.
+                </div>
+            <?php elseif (in_array($employee_role_summary, ['chef'])): ?>
                 <div class="error-message">
                     <strong>Penting:</strong> Jabatan Anda (**<?= getRoleDisplayName($employee_role_summary) ?>**) tidak menerima gaji operasional per jam. Total gaji ditampilkan sebagai nol.
                 </div>
@@ -344,6 +323,9 @@ function formatDurationDisplay($minutes) {
                 <div class="summary-item total-gaji" style="grid-column: 1 / -1; max-width: 400px; margin: 10px auto;">
                     <div class="label">Total Gaji Bersih</div>
                     <div class="value"><?= formatRupiah($total_gajian_summary) ?></div>
+                    <?php if ($is_current_talent): ?>
+                        <small style="color: var(--primary-color); margin-top: 5px;">(Profit Share Belum Dibayar)</small>
+                    <?php endif; ?>
                 </div>
             </div>
 

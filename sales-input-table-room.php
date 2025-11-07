@@ -40,6 +40,8 @@ $error = null;
 
 // Ambil daftar semua karyawan untuk dropdown
 $all_employees = $conn->query("SELECT id, name, role FROM employees WHERE status = 'active' ORDER BY name")->fetch_all(MYSQLI_ASSOC);
+// BARU: Ambil daftar Talent aktif
+$active_talents = getAllActiveTalents(); 
 
 // --- TANGGAL FILTER (BARU) ---
 $today = date('Y-m-d');
@@ -531,13 +533,19 @@ if ($stmt_recent_sales) {
                                     <div class="package-btn" data-package="regular_table" data-price="<?= $PRICES['regular_table'] ?>" data-includes="0" data-has-angel="false">Regular Table</div>
                                     <div class="package-btn" data-package="vip_table" data-price="<?= $PRICES['vip_table'] ?>" data-includes="0" data-has-angel="false">VIP Table</div>
                                     <div class="package-btn" data-package="vvip_table" data-price="<?= $PRICES['vvip_table'] ?>" data-includes="0" data-has-angel="false">VVIP Table</div>
-                                    <div class="package-btn" data-package="vvip_room_only" data-price="<?= $PRICES['vvip_room_only'] ?>" data-includes="2" data-has-angel="false">VVIP ROOM Only (+2 Pak Minuman)</div>
+                                    <div class="package-btn" data-package="vvip_room_only" data-price="<?= $PRICES['vvip_room_only'] ?>" data-includes="2" data-has-angel="false">VVIP Room Only (+2 Pak Minuman)</div>
                                     <div class="package-btn" data-package="vvip_room_angel_demon" data-price="<?= $PRICES['vvip_room_angel_demon'] ?>" data-includes="2" data-has-angel="true">VVIP ROOM & Angel (+2 Pak Minuman)</div>
                                     <div class="package-btn" data-package="svip_room_angel_demon" data-price="<?= $PRICES['svip_room_angel_demon'] ?>" data-includes="4" data-has-angel="true">SVIP ROOM & Angel (+4 Pak Minuman)</div>
                                 </div>
                                 <div class="form-group" style="margin-top: 20px;">
                                     <label for="talent_name">Nama Talent/Angel/Demon yang Melayani (Wajib isi jika ada Talent terlibat)</label>
-                                    <input type="text" id="talent_name" name="talent_name" class="form-input" placeholder="Kosongkan jika tidak ada Talent/Angel/Demon yang terlibat">
+                                    <select name="talent_name" id="talent_name" class="form-select">
+                                        <option value="">-- Kosongkan (Tidak Ada Talent Terlibat) --</option>
+                                        <?php foreach ($active_talents as $talent): ?>
+                                            <option value="<?= htmlspecialchars($talent['name']) ?>"><?= htmlspecialchars($talent['name']) ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                    <small class="form-help">Pilih nama Talent yang terlibat. Ini akan mengaktifkan pembagian 60/40.</small>
                                 </div>
                             </div>
                         </div>
@@ -792,7 +800,8 @@ if ($stmt_recent_sales) {
             let finalGrossRevenue = 0;
 
             const currentDiscount = parseInt(document.getElementById('diskon_percentage').value) || 0;
-            const talentNameInput = document.getElementById('talent_name').value.trim();
+            const talentNameSelect = document.getElementById('talent_name');
+            const talentNameInput = talentNameSelect.value.trim();
             const shareWrapper = document.getElementById('share-wrapper');
             
             if (selectedPackage) {
@@ -929,6 +938,7 @@ if ($stmt_recent_sales) {
             const addonContentDiv = document.getElementById('addon-content');
             const specificAddonsDiv = document.getElementById('package-specific-addons');
             const form = document.getElementById('sales-calculator-form');
+            const talentNameSelect = form.querySelector('#talent_name');
 
             // Listener untuk Pilihan Paket Dasar
             packageBtns.forEach(btn => {
@@ -937,9 +947,9 @@ if ($stmt_recent_sales) {
                     btn.classList.add('selected');
                     selectedPackage = btn.dataset.package;
                     
-                    // Reset input values (kecuali talent name)
+                    // Reset input values (kecuali diskon dan talent name)
                     form.querySelectorAll('input[type="number"]').forEach(input => {
-                        input.value = 0;
+                        if (input.id !== 'diskon_percentage') input.value = 0;
                     });
                     
                     document.getElementById('base_package_input').value = selectedPackage; // Set package name
@@ -978,8 +988,8 @@ if ($stmt_recent_sales) {
                     }
                 });
                 
-                // Listener khusus untuk nama talent
-                form.querySelector('#talent_name').addEventListener('input', calculateTotal);
+                // Listener khusus untuk nama talent (dropdown)
+                talentNameSelect.addEventListener('change', calculateTotal);
             }
             
             // Inisialisasi awal (klik paket pertama untuk memuat add-on)
