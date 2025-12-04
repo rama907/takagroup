@@ -17,26 +17,29 @@ $error = null;
 $active_talents = getAllActiveTalents();
 
 // --- A. Handle Aksi (Pembayaran Massal) ---
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'mark_transactions_paid') {
-    $transaction_ids = $_POST['transaction_ids'] ?? [];
-    $total_amount_paid = (int)($_POST['total_amount_to_pay'] ?? 0);
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
+    $action = $_POST['action'] ?? '';
     
-    // Preserve filters for redirect
+    // Menetapkan variabel untuk redirect (diperlukan untuk kedua aksi)
     $redirect_date = $_POST['redirect_date'] ?? date('Y-m-d');
     $redirect_talent = $_POST['redirect_talent'] ?? '';
-
-    if (empty($transaction_ids)) {
-        $error = "Pilih minimal satu transaksi untuk dibayarkan.";
-    } else {
-        $conn->begin_transaction();
-        try {
+    
+    $conn->begin_transaction();
+    try {
+        if ($action === 'mark_transactions_paid') {
+            // --- Aksi 1: Pembayaran Harian (Per Transaksi) ---
+            $transaction_ids = $_POST['transaction_ids'] ?? [];
+            $total_amount_paid = (int)($_POST['total_amount_to_pay'] ?? 0);
             
+            if (empty($transaction_ids)) {
+                throw new Exception("Pilih minimal satu transaksi untuk dibayarkan.");
+            }
+
             $placeholders = implode(',', array_fill(0, count($transaction_ids), '?'));
             // Tipe parameter: i (paid_by_employee_id) diikuti oleh i...i (transaction_ids)
             $types = 'i' . str_repeat('i', count($transaction_ids)); 
             $params = array_merge([$user['id']], $transaction_ids);
             
-            // Menggunakan kolom paid_by_employee_id dan paid_at
             $sql = "UPDATE sales_table_room SET talent_share_status = 'Paid', paid_by_employee_id = ?, paid_at = NOW() WHERE id IN ($placeholders) AND talent_share_status = 'Pending'";
             
             $stmt = $conn->prepare($sql);
@@ -49,22 +52,61 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             if ($stmt->execute() && $stmt->affected_rows > 0) {
                 $conn->commit();
                 $success = "Berhasil menandai **{$stmt->affected_rows} transaksi** Talent sebagai Dibayar. Total dibayarkan: **" . formatRupiah($total_amount_paid) . "**.";
+                // Redirect ke tab Harian
+                $redirect_hash = '#daily-payment-tab';
             } else {
                 throw new Exception("Gagal menandai transaksi. Mungkin sudah dibayarkan atau transaksi tidak ditemukan.");
             }
             $stmt->close();
 
-        } catch (Exception $e) {
-            $conn->rollback();
-            $error = "Gagal memproses pembayaran: " . $e->getMessage();
+        } elseif ($action === 'mark_talent_paid_mass') {
+            // --- Aksi 2: Pembayaran Massal Per Talent (Akumulatif) ---
+            $talent_names = $_POST['talent_names'] ?? [];
+            $total_amount_paid = (int)($_POST['total_amount_to_pay'] ?? 0);
+            
+            if (empty($talent_names)) {
+                throw new Exception("Pilih minimal satu Talent untuk dibayarkan.");
+            }
+
+            $placeholders = implode(',', array_fill(0, count($talent_names), '?'));
+            $types = 'i' . str_repeat('s', count($talent_names)); 
+            $params = array_merge([$user['id']], $talent_names);
+            
+            // Query untuk update semua transaksi PENDING untuk nama-nama talent yang dipilih
+            $sql = "UPDATE sales_table_room SET talent_share_status = 'Paid', paid_by_employee_id = ?, paid_at = NOW() WHERE talent_name IN ($placeholders) AND talent_share_status = 'Pending'";
+            
+            $stmt = $conn->prepare($sql);
+            if (!$stmt) {
+                throw new Exception("Gagal menyiapkan query pembayaran massal: " . $conn->error);
+            }
+            
+            $stmt->bind_param($types, ...$params);
+            
+            if ($stmt->execute() && $stmt->affected_rows > 0) {
+                $conn->commit();
+                $success = "Berhasil menandai **semua transaksi pending** untuk " . count($talent_names) . " Talent sebagai Dibayar. Total dibayarkan: **" . formatRupiah($total_amount_paid) . "**.";
+                 // Redirect ke tab Massal
+                $redirect_hash = '#mass-payment-tab';
+            } else {
+                throw new Exception("Gagal menandai transaksi. Mungkin sudah dibayarkan atau tidak ada transaksi pending.");
+            }
+            $stmt->close();
+
+        } else {
+             // Aksi lainnya (seperti menjalankan rekap mingguan) dapat ditambahkan di sini
+             throw new Exception("Aksi tidak valid.");
         }
+
+    } catch (Exception $e) {
+        $conn->rollback();
+        $error = "Gagal memproses pembayaran: " . $e->getMessage();
     }
+    
     // Redirect untuk membersihkan POST dan menampilkan pesan
     $redirect_url = "talent-payroll-recap-weekly.php?msg=" . urlencode($success ?? $error) . "&type=" . urlencode(isset($success) ? 'success' : 'error');
-    if (!empty($redirect_date)) $redirect_url .= "&daily_date=" . urlencode($redirect_date);
-    if (!empty($redirect_talent)) $redirect_url .= "&talent_name=" . urlencode($redirect_talent);
-    // Tambahkan hash untuk mengarahkan ke tab pembayaran harian setelah pembayaran
-    header("Location: " . $redirect_url . "#daily-payment-tab");
+    if (isset($redirect_hash)) $redirect_url .= $redirect_hash;
+    
+    header("Location: " . $redirect_url);
     exit;
 }
 
@@ -75,7 +117,39 @@ if (isset($_GET['msg']) && isset($_GET['type'])) {
 }
 
 
-// --- B. Ambil Data untuk Pembayaran Per Transaksi (Daily/Real-time) ---
+// --- B. Ambil Data untuk Tab Pembayaran Massal Per Talent (Aggregated Pending) ---
+$talent_pending_totals_map = [];
+$stmt_pending_aggregated = $conn->query("
+    SELECT 
+        talent_name, 
+        COALESCE(SUM(talent_share), 0) as total_pending_share
+    FROM sales_table_room
+    WHERE talent_share_status = 'Pending' AND talent_name IS NOT NULL
+    GROUP BY talent_name
+    HAVING total_pending_share > 0
+    ORDER BY total_pending_share DESC
+");
+
+if ($stmt_pending_aggregated) {
+    while ($row = $stmt_pending_aggregated->fetch_assoc()) {
+         $talent_pending_totals_map[$row['talent_name']] = $row;
+    }
+    $stmt_pending_aggregated->close();
+}
+
+$talent_pending_totals = [];
+foreach ($active_talents as $talent) {
+    $name = $talent['name'];
+    if (isset($talent_pending_totals_map[$name])) {
+        $talent_pending_totals[] = [
+            'talent_name' => $name,
+            'total_pending_share' => (int)$talent_pending_totals_map[$name]['total_pending_share'],
+        ];
+    }
+}
+
+
+// --- C. Ambil Data untuk Pembayaran Per Transaksi (Daily/Real-time) ---
 $today_date = date('Y-m-d');
 $selected_daily_date = $_GET['daily_date'] ?? $today_date;
 $selected_talent_name = $_GET['talent_name'] ?? '';
@@ -103,7 +177,7 @@ if (!empty($selected_talent_name) && !empty($selected_daily_date)) {
 }
 
 
-// --- C. Ambil Data untuk Visual Hints (Semua Tanggal dengan Sales) ---
+// --- D. Ambil Data untuk Visual Hints (Semua Tanggal dengan Sales) ---
 $dates_with_talent_sales = [];
 $stmt_dates = $conn->query("
     SELECT DATE(sale_date) as sale_date, SUM(talent_share) as total_share
@@ -123,16 +197,16 @@ if ($stmt_dates) {
 $dates_with_talent_sales_json = json_encode($dates_with_talent_sales);
 
 
-// --- D. Ambil Riwayat Rekap Mingguan (Historical Data) ---
+// --- E. Ambil Riwayat Rekap Mingguan (Historical Data) ---
 $talent_recap_history = $conn->query("
     SELECT twsr.*, e.name as employee_name
     FROM talent_weekly_salary_recap twsr
-    JOIN employees e ON twsr.employee_id = e.id
+    LEFT JOIN employees e ON twsr.employee_id = e.id
     ORDER BY twsr.week_start DESC, twsr.employee_name ASC
 ")->fetch_all(MYSQLI_ASSOC);
 
 
-// --- E. Ambil Riwayat Keseluruhan Transaksi Talent ---
+// --- F. Ambil Riwayat Keseluruhan Transaksi Talent ---
 $all_talent_logs = [];
 $filter_talent_history = $_GET['filter_talent_history'] ?? '';
 
@@ -299,6 +373,12 @@ function getPackageDisplayName($key) {
             height: 18px;
             cursor: pointer;
         }
+        
+        /* Gaya untuk tab pembayaran massal */
+        #mass-payment-tab .transaction-log-item .transaction-share {
+             color: var(--danger-color);
+             font-size: 1.1rem;
+        }
     </style>
 </head>
 <body>
@@ -324,12 +404,73 @@ function getPackageDisplayName($key) {
             <?php endif; ?>
             
             <div class="page-tabs">
-                <button class="tab-button active" onclick="showTab('daily-payment-tab', this)">Pembayaran Harian (Pending)</button>
+                <button class="tab-button active" onclick="showTab('mass-payment-tab', this)">Detail Total Gaji Pending Per Talent</button>
+                <button class="tab-button" onclick="showTab('daily-payment-tab', this)">Pembayaran Harian (Pending)</button>
                 <button class="tab-button" onclick="showTab('weekly-recap-tab', this)">Rekap Mingguan (Historical)</button>
                 <button class="tab-button" onclick="showTab('history-tab', this)">Riwayat Transaksi Keseluruhan</button>
             </div>
+            
+            <div id="mass-payment-tab" class="tab-content-area active">
+                <div class="card full-width" style="margin-top: 0;">
+                    <div class="card-header">
+                         <h3>Detail Total Gaji Pending Per Talent (Akumulatif)</h3>
+                    </div>
+                    <div class="card-content">
+                        <div class="info-message" style="margin-bottom: var(--spacing-xl);">
+                            <strong>Info:</strong> Pilih Talent di bawah ini untuk menandai **SEMUA** transaksi pending mereka (dari semua tanggal) sebagai sudah dibayar.
+                        </div>
+                        
+                        <form method="POST" id="mass-payment-form">
+                            <input type="hidden" name="action" value="mark_talent_paid_mass">
+                            <input type="hidden" name="total_amount_to_pay" id="mass_total_amount_to_pay" value="0">
+            
+                            <?php if (empty($talent_pending_totals)): ?>
+                                <div class="no-data">Tidak ada Talent yang memiliki transaksi pending (share > 0).</div>
+                            <?php else: ?>
+                                <h4 style="border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem; margin-top: var(--spacing-lg);">
+                                    Daftar Talent dengan Share Pending
+                                </h4>
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                    <label>
+                                        <input type="checkbox" id="select-all-mass-payment" class="transaction-checkbox"> Pilih Semua Talent
+                                    </label>
+                                </div>
+                                
+                                <div class="requests-list">
+                                    <?php foreach ($talent_pending_totals as $talent_total): ?>
+                                    <div class="transaction-log-item">
+                                        <label style="display: flex; gap: 10px; align-items: center; cursor: pointer; flex-grow: 1;">
+                                            <input type="checkbox" 
+                                                   name="talent_names[]" 
+                                                   value="<?= htmlspecialchars($talent_total['talent_name']) ?>" 
+                                                   class="mass-payment-checkbox" 
+                                                   data-share="<?= $talent_total['total_pending_share'] ?>">
+                                            <div class="transaction-info">
+                                                <strong><?= htmlspecialchars($talent_total['talent_name']) ?></strong> 
+                                            </div>
+                                        </label>
+                                        <span class="transaction-share">
+                                            <?= formatRupiah($talent_total['total_pending_share']) ?>
+                                        </span>
+                                    </div>
+                                    <?php endforeach; ?>
+                                </div>
+                                
+                                <div style="text-align: right; margin-top: 20px; padding-top: 15px; border-top: 1px solid var(--border-color);">
+                                    <strong style="font-size: 1.2rem;">Total Dibayarkan: <span id="mass_selected_total_display"><?= formatRupiah(0) ?></span></strong>
+                                    <button type="submit" class="btn btn-success btn-lg" id="pay-mass-selected-btn" disabled style="margin-top: 10px;"
+                                        onclick="return confirm('Yakin ingin membayarkan gaji **AKUMULATIF** untuk semua Talent yang dipilih? Total: ' + document.getElementById('mass_selected_total_display').textContent)">
+                                        Bayar Sekarang
+                                    </button>
+                                </div>
+                            <?php endif; ?>
+                        </form>
+                    </div>
+                </div>
+            </div>
 
-            <div id="daily-payment-tab" class="tab-content-area active">
+
+            <div id="daily-payment-tab" class="tab-content-area">
                 <div class="daily-payment-grid">
                     
                     <div class="card" style="grid-column: 1 / -1; margin-top: 0;">
@@ -404,7 +545,7 @@ function getPackageDisplayName($key) {
                                                 </div>
                                                 
                                                 <div style="text-align: right; margin-top: 20px; padding-top: 15px; border-top: 1px solid var(--border-color);">
-                                                    <strong style="font-size: 1.2rem;">Total Dibayarkan: <span id="selected_total_display"><?= formatRupiah(0) ?></span></strong>
+                                                    <strong style="font-size: 1.2rem;">Total Dipilih: <span id="selected_total_display"><?= formatRupiah(0) ?></span></strong>
                                                     <button type="submit" class="btn btn-success btn-lg" id="pay-selected-btn" disabled style="margin-top: 10px;"
                                                         onclick="return confirm('Yakin ingin membayarkan gaji untuk transaksi yang dipilih? Total: ' + document.getElementById('selected_total_display').textContent)">
                                                         Bayar Sekarang
@@ -616,25 +757,65 @@ function getPackageDisplayName($key) {
             }
         }
 
+        // New function for the mass payment tab
+        function updateMassPaymentTotal() {
+            let total = 0;
+            let anyChecked = false;
+            // Selector spesifik untuk checkbox di tab pembayaran massal
+            const massCheckboxes = document.querySelectorAll('#mass-payment-tab .mass-payment-checkbox');
+            
+            massCheckboxes.forEach(checkbox => {
+                if (checkbox.checked && checkbox.dataset.share) {
+                    total += parseFloat(checkbox.dataset.share);
+                    anyChecked = true;
+                }
+            });
+            document.getElementById('mass_selected_total_display').textContent = formatRupiahJS(total);
+            document.getElementById('mass_total_amount_to_pay').value = total;
+            document.getElementById('pay-mass-selected-btn').disabled = !anyChecked;
+
+            // Update select-all mass state
+            const allBoxes = Array.from(massCheckboxes);
+            const allChecked = allBoxes.length > 0 && allBoxes.every(cb => cb.checked);
+            const selectAllMassCheckbox = document.getElementById('select-all-mass-payment');
+            if (selectAllMassCheckbox) {
+                 selectAllMassCheckbox.checked = allChecked;
+            }
+        }
+
+
         function initPaymentLogic() {
-            // Checkboxes individual change listener (selector spesifik untuk yang bisa dicentang)
+            // --- Daily Payment Logic (for #daily-payment-tab) ---
             document.querySelectorAll('#daily-payment-tab .transaction-checkbox[name="transaction_ids[]"]').forEach(checkbox => {
                 checkbox.addEventListener('change', updateSelectedTotal);
             });
 
-            // Select All listener
             const selectAllCheckbox = document.getElementById('select-all-transactions');
             if (selectAllCheckbox) {
                 selectAllCheckbox.addEventListener('change', function() {
                     document.querySelectorAll('#daily-payment-tab .transaction-checkbox[name="transaction_ids[]"]').forEach(checkbox => {
                         checkbox.checked = this.checked;
                     });
-                    // Panggil updateTotal setelah semua status diubah
                     updateSelectedTotal();
                 });
             }
             
-            // Highlight the date input based on the filtered date sales data
+            // --- Mass Payment Logic (for #mass-payment-tab) ---
+            const selectAllMassCheckbox = document.getElementById('select-all-mass-payment');
+            if (selectAllMassCheckbox) {
+                selectAllMassCheckbox.addEventListener('change', function() {
+                    document.querySelectorAll('#mass-payment-tab .mass-payment-checkbox').forEach(checkbox => {
+                        checkbox.checked = this.checked;
+                    });
+                    updateMassPaymentTotal();
+                });
+            }
+
+            document.querySelectorAll('#mass-payment-tab .mass-payment-checkbox').forEach(checkbox => {
+                checkbox.addEventListener('change', updateMassPaymentTotal);
+            });
+
+            // --- Date Input Highlight Logic ---
             const dateInput = document.getElementById('daily_date_filter');
             if (dateInput) {
                 const highlightDateInput = (dateString) => {
@@ -658,6 +839,7 @@ function getPackageDisplayName($key) {
             
             // Set initial state
             updateSelectedTotal();
+            updateMassPaymentTotal();
         }
         
         function showTab(tabId, clickedButton) {
@@ -683,7 +865,7 @@ function getPackageDisplayName($key) {
         document.addEventListener('DOMContentLoaded', function() {
             // Initialize tab based on URL hash or default
             const hash = window.location.hash.substring(1);
-            const defaultTab = 'daily-payment-tab';
+            const defaultTab = 'mass-payment-tab'; // NEW DEFAULT TAB
             
             let initialTab = defaultTab;
             if (hash && document.getElementById(hash)) {

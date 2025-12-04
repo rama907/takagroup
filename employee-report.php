@@ -43,7 +43,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['search'])) {
         foreach ($refrigerator_transactions as $log) {
             $type = $log['transaction_type'];
             $qty = $log['quantity'];
-            $product = str_replace('_', ' ', $log['product_name']);
+            // Gunakan str_replace untuk membuat kunci ringkasan yang bersih
+            $product = str_replace('_', ' ', $log['product_name']); 
             
             $summary_totals['refrigerator'][$type] += $qty;
             if (!isset($summary_totals['refrigerator']['details'][$product][$type])) {
@@ -306,31 +307,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['search'])) {
                         </div>
                     </div>
                     <div class="summary-card-small" style="border-left: 4px solid var(--success-color);">
-                        <h4>Total Deposit Kulkas</h4>
+                        <h4>Total Deposit Kulkas (Unit)</h4>
                         <p class="value" style="color: var(--success-color);"><?= $summary_totals['refrigerator']['deposit'] ?></p>
                         <div class="summary-card-detail">
                             <?php 
                             $fridge_details = $summary_totals['refrigerator']['details'];
-                            $products = ['Sake', 'Anggur Merah', 'Tuak', 'Soju', 'Spicy 1', 'Azul 1', 'Azul 2'];
-                            foreach ($products as $p) {
+                            // Membuat daftar dinamis dari semua produk yang memiliki transaksi kulkas
+                            $product_names = array_keys($fridge_details);
+                            sort($product_names);
+                            foreach ($product_names as $p) {
                                 $qty = $fridge_details[$p]['deposit'] ?? 0;
                                 if ($qty > 0) {
-                                    echo "<span>$p: $qty</span>";
+                                    echo "<span>" . htmlspecialchars($p) . ": {$qty}</span>";
                                 }
                             }
                             ?>
                         </div>
                     </div>
                     <div class="summary-card-small" style="border-left: 4px solid var(--danger-color);">
-                        <h4>Total Withdraw Kulkas</h4>
+                        <h4>Total Withdraw Kulkas (Unit)</h4>
                         <p class="value" style="color: var(--danger-color);"><?= $summary_totals['refrigerator']['withdraw'] ?></p>
                         <div class="summary-card-detail">
                             <?php 
-                            $products = ['Sake', 'Anggur Merah', 'Tuak', 'Soju', 'Spicy 1', 'Azul 1', 'Azul 2'];
-                            foreach ($products as $p) {
+                            $fridge_details = $summary_totals['refrigerator']['details'];
+                            // Membuat daftar dinamis dari semua produk yang memiliki transaksi kulkas
+                            $product_names = array_keys($fridge_details);
+                            sort($product_names);
+                            foreach ($product_names as $p) {
                                 $qty = $fridge_details[$p]['withdraw'] ?? 0;
                                 if ($qty > 0) {
-                                    echo "<span>$p: $qty</span>";
+                                    echo "<span>" . htmlspecialchars($p) . ": {$qty}</span>";
                                 }
                             }
                             ?>
@@ -357,6 +363,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['search'])) {
                         <p class="value" style="color: var(--danger-color);"><?= $summary_totals['warehouse']['withdraw'] ?></p>
                         <div class="summary-card-detail">
                             <?php 
+                            $warehouse_details = $summary_totals['warehouse']['details'];
+                            $products = ['Jagung', 'Anggur', 'Bawang Merah', 'Strawberry', 'Lemon', 'Susu', 'Botol Kosong', 'Gelas Kosong', 'Piring Kosong', 'Bahan Khusus'];
                             foreach ($products as $p) {
                                 $qty = $warehouse_details[$p]['withdraw'] ?? 0;
                                 if ($qty > 0) {
@@ -370,7 +378,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['search'])) {
 
                 <div class="card full-width">
                     <div class="card-header">
-                        <h3>Detail Transaksi Stok Kulkas</h3>
+                        <h3>Detail Transaksi Stok Kulkas (Unit)</h3>
                     </div>
                     <div class="card-content">
                         <?php if (empty($refrigerator_transactions)): ?>
@@ -383,8 +391,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['search'])) {
                                             <strong><?= htmlspecialchars(str_replace('_', ' ', $log['product_name'])) ?></strong>
                                             <span>
                                                 pada <?= date('H:i', strtotime($log['transaction_at'])) ?>
-                                                <?php if ($log['product_name'] == 'paket_spicy_2') echo "(Azul 1)"; ?>
-                                                <?php if ($log['product_name'] == 'paket_spicy_3') echo "(Azul 2)"; ?>
                                             </span>
                                         </div>
                                         <div class="log-action">
@@ -426,7 +432,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['search'])) {
 
                 <div class="card full-width">
                     <div class="card-header">
-                        <h3>Detail Penjualan</h3>
+                        <h3>Detail Penjualan (Paket Terjual)</h3>
                     </div>
                     <div class="card-content">
                         <?php if (empty($sales_details)): ?>

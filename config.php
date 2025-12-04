@@ -7,7 +7,7 @@ error_reporting(E_ALL & ~E_NOTICE);
 
 // --- KONSTANTA BARU UNTUK DISCORD BOT API ---
 // GANTI 'MASUKKAN_KUNCI_RAHASIA_ANDA_DISINI' dengan kunci unik (contoh: aBc123XyZ789)
-define('API_SECRET_KEY', 'oxIRDdPa8wsfx6xYJO1IHxr6RiXFsGKf'); 
+define('API_SECRET_KEY', '564d5c059a374f249a79e481bbf9df28'); 
 // -------------------------------------------
 
 // Database configuration
